@@ -1,0 +1,14 @@
+# 构建产物
+ai_assistant/build/
+ai_assistant/.cache/
+
+# 第三方库（通过脚本自动下载）
+ai_assistant/third_party/kissfft/
+ai_assistant/third_party/openssl/
+ai_assistant/third_party/tflite/
+
+# 调试文件
+ai_assistant/*.pcm
+ai_assistant/playback.wav
+ai_assistant/sparkchain.log
+

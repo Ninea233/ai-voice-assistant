@@ -1,0 +1,131 @@
+[
+    {
+        "name": "开灯",
+        "description": "打开灯光",
+        "triggers": [
+            "打开灯",
+            "开灯"
+        ],
+        "action": "action.light_on",
+        "category": "control"
+    },
+    {
+        "name": "关灯",
+        "description": "关闭灯光",
+        "triggers": [
+            "关闭灯",
+            "关灯"
+        ],
+        "action": "action.light_off",
+        "category": "control"
+    },
+    {
+        "name": "打开空调",
+        "description": "打开空调",
+        "triggers": [
+            "打开空调",
+            "开空调"
+        ],
+        "action": "action.ac_on",
+        "category": "control"
+    },
+    {
+        "name": "关闭空调",
+        "description": "关闭空调",
+        "triggers": [
+            "关闭空调",
+            "关空调"
+        ],
+        "action": "action.ac_off",
+        "category": "control"
+    },
+    {
+        "name": "开关空调",
+        "description": "切换空调开关状态",
+        "triggers": [
+            "开关空调"
+        ],
+        "action": "action.ac_toggle",
+        "category": "control"
+    },
+    {
+        "name": "空调温度调高",
+        "description": "调高空调温度",
+        "triggers": [
+            "空调温度调高",
+            "温度调高"
+        ],
+        "action": "action.ac_temp_up",
+        "category": "control"
+    },
+    {
+        "name": "空调温度调低",
+        "description": "调低空调温度",
+        "triggers": [
+            "空调温度调低",
+            "温度调低"
+        ],
+        "action": "action.ac_temp_down",
+        "category": "control"
+    },
+    {
+        "name": "音量调大",
+        "description": "调大音量",
+        "triggers": [
+            "音量调大",
+            "大点声",
+            "大声点"
+        ],
+        "action": "action.vol_up",
+        "category": "control"
+    },
+    {
+        "name": "音量调小",
+        "description": "调小音量",
+        "triggers": [
+            "音量调小",
+            "小点声",
+            "小声点"
+        ],
+        "action": "action.vol_down",
+        "category": "control"
+    },
+    {
+        "name": "休眠",
+        "description": "让助手进入休眠状态",
+        "triggers": [
+            "休眠",
+            "待机",
+            "睡觉",
+            "休息",
+            "退下"
+        ],
+        "action": "action.sleep",
+        "category": "system"
+    },
+    {
+        "name": "添加偏好",
+        "description": "添加或修改用户偏好（如默认城市、称呼、说话风格等）。key=偏好名称，value=偏好值",
+        "triggers": [
+            "记住",
+            "设置",
+            "我喜欢",
+            "偏好"
+        ],
+        "action": "action.set_preference",
+        "category": "system"
+    },
+    {
+        "name": "删除偏好",
+        "description": "删除用户偏好。key=要删除的偏好名称或关键词",
+        "triggers": [
+            "删除偏好",
+            "取消偏好",
+            "忘记",
+            "不要了",
+            "不喜欢"
+        ],
+        "action": "action.delete_preference",
+        "category": "system"
+    }
+]
