@@ -1,8 +1,8 @@
-# Agent 语音智能助手 v2.3.1
+# Agent Voice Assistant v2.3.1
 
-> 🎙️ 基于 i.MX6ULL (ARM Cortex-A7) 的离线/在线混合 Agent 语音助手系统
+> 🎙️ An offline/online hybrid Agent voice assistant system built on i.MX6ULL (ARM Cortex-A7)
 >
-> 本地唤醒 + 云端大脑 + Agent 架构，让嵌入式设备开口说话
+> Local wake word + cloud brain + Agent architecture, giving embedded devices a voice
 
 [![Platform](https://img.shields.io/badge/platform-i.MX6ULL%20ARM-blue)](https://www.nxp.com/products/processors-and-microcontrollers/arm-processors/i-mx-applications-processors/i-mx-6-processors/i-mx-6ull-single-core-processor-with-arm-cortex-a7:i.MX6ULL)
 [![Language](https://img.shields.io/badge/language-C%2B%2B14-orange)](https://en.cppreference.com/w/cpp/14)
@@ -10,458 +10,472 @@
 
 ---
 
-## 📖 目录
+## 📖 Table of Contents
 
-- [功能特性](#功能特性)
-- [系统架构](#系统架构)
-- [技术亮点](#技术亮点)
-- [快速开始](#快速开始)
-- [配置说明](#配置说明)
-- [技能系统](#技能系统)
-- [项目结构](#项目结构)
-- [编译与部署](#编译与部署)
-- [技术栈](#技术栈)
-- [常见问题](#常见问题)
-- [许可证](#许可证)
+- [Features](#features)
+- [System Architecture](#system-architecture)
+- [Technical Highlights](#technical-highlights)
+- [Quick Start](#quick-start)
+- [Configuration](#configuration)
+- [Skill System](#skill-system)
+- [Project Structure](#project-structure)
+- [Build & Deployment](#build--deployment)
+- [Tech Stack](#tech-stack)
+- [FAQ](#faq)
+- [License](#license)
 
 ---
 
-## 功能特性
+## Features
 
-### 🎯 核心交互
+### 🎯 Core Interaction
 
-| 功能 | 说明 |
+| Feature | Description |
 |------|------|
-| **语音唤醒** | 本地 TFLite KWS 模型检测唤醒词"小九小九"，阈值 0.97，连续 4 帧确认 |
-| **唤醒反馈** | 检测后立即播放 `wakeup.wav` 提示音 |
-| **连续对话** | 一次唤醒后持续聆听，多轮对话无需反复唤醒 |
-| **自动休眠** | 10 秒无语音自动休眠；说"休眠"手动休眠 |
+| **Voice Wake-up** | Local TFLite KWS model detects the wake word "小九小九" (Xiaojiu), threshold 0.97, confirmed over 4 consecutive frames |
+| **Wake-up Feedback** | Plays the `wakeup.wav` beep immediately after detection |
+| **Continuous Conversation** | Keeps listening after a single wake-up; multi-turn dialog without re-waking |
+| **Auto Sleep** | Auto-sleeps after 10 seconds of silence; say "休眠" (sleep) to sleep manually |
 
-### ☁️ 云端智能
+### ☁️ Cloud Intelligence
 
-| 功能 | 引擎 | 说明 |
+| Feature | Engine | Description |
 |------|------|------|
-| **语音识别 (ASR)** | 讯飞中文识别大模型 | 多引擎表决（主引擎 + 方言引擎），置信度加权 |
-| **对话生成 (LLM)** | 星火 Spark-X2 | OpenAI 兼容 API + 原生 Function Calling，携带完整对话上下文 |
-| **语音合成 (TTS)** | 讯飞超拟人合成 | 流式管线：合成与播放并行，消除首句延迟 |
+| **Speech Recognition (ASR)** | iFlytek Chinese recognition large model | Multi-engine voting (primary + dialect engine), confidence-weighted |
+| **Dialog Generation (LLM)** | iFlytek Spark-X2 | OpenAI-compatible API + native Function Calling, carries full conversation context |
+| **Speech Synthesis (TTS)** | iFlytek hyper-realistic synthesis | Streaming pipeline: synthesis and playback run in parallel, eliminating first-sentence latency |
 
-### 🤖 Agent 智能体
+### 🤖 Agent
 
-| 功能 | 说明 |
+| Feature | Description |
 |------|------|
-| **Action** | keyword或LLM均可独立触发，直接执行不回注（灯光/空调/音量/休眠/偏好） |
-| **Skill** | 仅 LLM 触发，SKILL.md 两阶段加载，必回注（今日简报） |
-| **MCP** | 仅 LLM 触发，JSON-RPC 2.0 标准，全量可见，必回注 |
-| **短期记忆** | 唤醒周期内保留完整对话上下文（`agent_core_->history_`） |
-| **长期记忆** | 偏好持久化存储在 `agent_prompt.md` 可改动区 |
+| **Action** | Triggerable independently by keyword or LLM, executed directly without injecting back (lights/AC/volume/sleep/preferences) |
+| **Skill** | LLM-triggered only, two-stage SKILL.md loading, always injected back (daily briefing) |
+| **MCP** | LLM-triggered only, JSON-RPC 2.0 standard, fully visible, always injected back |
+| **Short-term Memory** | Keeps the full conversation context within a wake cycle (`agent_core_->history_`) |
+| **Long-term Memory** | Preferences persisted in the editable region of `agent_prompt.md` |
 
-### 🏠 智能家居控制
+### 🏠 Smart Home Control
 
-通过语音指令控制家居设备：
+Control home devices through voice commands:
 
-- 💡 **灯光**：开灯 / 关灯
-- 🌡️ **空调**：开关 / 温度调节
-- 🔊 **音量**：调大 / 调小
+- 💡 **Lights**: turn on / turn off
+- 🌡️ **AC**: on/off / temperature adjustment
+- 🔊 **Volume**: turn up / turn down
 
-### 📡 实时数据
+### 📡 Real-time Data
 
-- 🌤️ **天气预报**：wttr.in API 获取当前天气 + 未来 3 天预报（温度、湿度、风力、天气状况）
-- 🕐 **时间查询**：系统本地时间 + POSIX 时区映射（支持 `Asia/Shanghai`、`America/New_York` 等 15+ 时区）
-- 📋 **今日简报**：LLM 自动综合天气、时间生成每日简报
+- 🌤️ **Weather Forecast**: wttr.in API for current weather + 3-day forecast (temperature, humidity, wind, conditions)
+- 🕐 **Time Query**: system local time + POSIX timezone mapping (supports 15+ timezones including `Asia/Shanghai`, `America/New_York`)
+- 📋 **Daily Briefing**: LLM automatically synthesizes weather and time into a daily briefing
 
 ---
 
-## 系统架构
+## System Architecture
 
-### 整体架构
+### Overall Architecture
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│                     硬件层                             │
-│  i.MX6ULL (Cortex-A7) + WM8960 + 麦克风 + 喇叭        │
+│                   Hardware Layer                      │
+│  i.MX6ULL (Cortex-A7) + WM8960 + Mic + Speaker       │
 └──────────────────┬───────────────────────────────────┘
                    │
 ┌──────────────────▼───────────────────────────────────┐
-│                    音频采集层                           │
-│  ALSA AudioCapture (16kHz, 单声道, S16_LE)             │
-│  ├─ 环形缓冲区 (Ring Buffer)                           │
-│  └─ VAD 语音活动检测                                   │
+│                 Audio Capture Layer                   │
+│  ALSA AudioCapture (16kHz, mono, S16_LE)             │
+│  ├─ Ring Buffer                                      │
+│  └─ VAD (Voice Activity Detection)                   │
 └──────────────────┬───────────────────────────────────┘
                    │
 ┌──────────────────▼───────────────────────────────────┐
-│                   唤醒检测层                            │
-│  KWS TFLite 引擎                                       │
-│  ├─ MFCC: 预加重→分帧→加窗→FFT→Mel滤波→log→DCT       │
-│  └─ TFLite 推理 (10帧×40维 → softmax → 唤醒词)        │
+│                Wake-word Detection Layer              │
+│  KWS TFLite Engine                                   │
+│  ├─ MFCC: pre-emphasis→framing→windowing→FFT→        │
+│  │        Mel filtering→log→DCT                      │
+│  └─ TFLite inference (10 frames × 40 dims →          │
+│       softmax → wake word)                           │
 └──────────────────┬───────────────────────────────────┘
                    │
 ┌──────────────────▼───────────────────────────────────┐
-│                   云端服务层                            │
+│                  Cloud Service Layer                  │
 │  ┌─────────┐  ┌─────────┐  ┌───────────────────┐     │
 │  │   ASR   │  │   LLM   │  │        TTS         │     │
-│  │ WSS流式 │  │ OpenAI │  │ 流式管线(生产-消费)  │     │
-│  │ 多引擎表决│  │ Agent  │  │ aplay 命令行播放    │     │
+│  │ WSS      │  │ OpenAI  │  │ streaming pipeline │     │
+│  │ streaming│  │ Agent   │  │ (producer-consumer)│     │
+│  │ multi-   │  │         │  │ aplay cmd playback │     │
+│  │ engine   │  │         │  │                    │     │
+│  │ voting   │  │         │  │                    │     │
 │  └────┬────┘  └────┬────┘  └─────────┬─────────┘     │
 │       │            │                 │                 │
 │  ┌────▼────────────▼─────────────────▼──────────┐     │
-│  │              网络层                            │     │
+│  │                  Network Layer                 │     │
 │  │  TCP + TLS (OpenSSL) + WebSocket (RFC 6455)   │     │
-│  │  + 讯飞 HMAC-SHA256 签名认证                   │     │
+│  │  + iFlytek HMAC-SHA256 signature auth         │     │
 │  └──────────────────────────────────────────────┘     │
 └──────────────────┬───────────────────────────────────┘
                    │
 ┌──────────────────▼───────────────────────────────────┐
-│                    Agent 决策层                        │
+│                  Agent Decision Layer                 │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐  │
-│  │ Action匹配   │  │ LLM Agent   │  │  执行器      │  │
-│  │ keyword或LLM均可独立触发 │  │ ≤3轮调用     │  │ action无回注 │  │
+│  │ Action match │  │  LLM Agent   │  │  Executor    │  │
+│  │ keyword or   │  │ ≤3 tool calls│  │ action, no   │  │
+│  │ LLM, either  │  │              │  │ injection    │  │
+│  │ triggers it  │  │              │  │ back         │  │
 │  └─────────────┘  └──────────────┘  └─────────────┘  │
 │                          │                             │
 │              ┌───────────▼──────────┐                  │
-│              │     状态机调度        │                  │
+│              │   State Machine      │                  │
 │              │ SLEEP→WAKEUP→LISTEN  │                  │
-│              │ →PROCESS→SPEAK→循环  │                  │
+│              │ →PROCESS→SPEAK→loop  │                  │
 │              └──────────────────────┘                  │
 └──────────────────────────────────────────────────────┘
 ```
 
-### 状态机
+### State Machine
 
 ```
      ┌──────────────────────────────────┐
      │                                  │
      ▼                                  │
-  ┌──────┐   唤醒词    ┌────────┐      │
-  │ SLEEP │ ────────→ │ WAKEUP │      │
-  │ (低功 │           │ (播放   │      │
-  │  耗)  │ ←──────── │ 提示音) │      │
-  └──────┘   休眠/    └───┬────┘      │
-     ↑       10s静默      │            │
-     │                    ▼            │
-     │              ┌──────────┐       │
-     │              │ LISTENING│       │
-     │              │ (VAD检测)│       │
-     │              └────┬─────┘       │
-     │                   │ 语音结束     │
-     │                   ▼              │
-     │              ┌──────────┐       │
-     │              │PROCESSING│       │
-     │              │ ASR→Agent│       │
-     │              │  →TTS    │       │
-     │              └────┬─────┘       │
-     │                   │              │
-     │                   ▼              │
-     │              ┌──────────┐       │
-     └──────────────│ SPEAKING │───────┘
-         播放完成    │ (流式TTS)│  连续对话
-                    └──────────┘  (回LISTENING)
+  ┌──────┐   wake word   ┌────────┐     │
+  │ SLEEP │ ────────────→ │ WAKEUP │    │
+  │ (low  │              │ (plays │     │
+  │ power)│ ←─────────── │ beep)  │     │
+  └──────┘  sleep/       └───┬────┘     │
+     ↑      10s silence      │          │
+     │                       ▼          │
+     │                ┌──────────┐      │
+     │                │ LISTENING│      │
+     │                │ (VAD)    │      │
+     │                └────┬─────┘      │
+     │                     │ speech     │
+     │                     │ ended      │
+     │                     ▼            │
+     │                ┌──────────┐      │
+     │                │PROCESSING│      │
+     │                │ ASR→Agent│      │
+     │                │ →TTS     │      │
+     │                └────┬─────┘      │
+     │                     │            │
+     │                     ▼            │
+     │                ┌──────────┐      │
+     └─────────────── │ SPEAKING │──────┘
+        playback done │ (stream  │  continuous
+                      │  TTS)    │  (back to
+                      └──────────┘  LISTENING)
 ```
 
 ---
 
-## 技术亮点
+## Technical Highlights
 
-### 1. 完整离线唤醒
+### 1. Fully Offline Wake-up
 
-不依赖云端，本地 KWS 引擎毫秒级响应：
+No cloud dependency; the local KWS engine responds in milliseconds:
 
-- **完整 MFCC Pipeline**：预加重 → 分帧 → Hamming 加窗 → kissfft FFT → Mel 滤波器组 → log → DCT
-- **Float16 量化模型**：120KB，训练验证准确率 99.8%
-- **Python 训练工具链**：`train_kws.py` — 录音→训练→量化→部署一站式
-- **连续 4 帧确认**：有效防止误唤醒
+- **Complete MFCC Pipeline**: pre-emphasis → framing → Hamming windowing → kissfft FFT → Mel filter bank → log → DCT
+- **Float16 Quantized Model**: 120KB, 99.8% accuracy on training validation
+- **Python Training Toolchain**: `train_kws.py` — record → train → quantize → deploy in one go
+- **4 Consecutive Frames Confirmation**: effectively prevents false wake-ups
 
-### 2. Agent 架构：三层分离（action > skill > MCP）
+### 2. Agent Architecture: Three-Layer Separation (action > skill > MCP)
 
 ```
-用户说"天气怎么样"
+User says "How's the weather?"
       │
       ▼
 ┌─────────────┐      ┌──────────┐      ┌─────────┐
 │   action    │  >   │  skill   │  >   │   MCP   │
-│ keyword/LLM独立触发 │      │ 仅 LLM   │      │ 仅 LLM  │
-│  不回注     │      │ 必回注   │      │ 必回注  │
-│ 硬件操作    │      │ 智能任务 │      │ 数据工具 │
+│ keyword/LLM │      │ LLM only │      │ LLM only│
+│ either      │      │ always   │      │ always  │
+│ triggers it │      │ injected │      │ injected│
+│ no inject   │      │ back     │      │ back    │
+│ hardware ops│      │ smart    │      │ data    │
+│             │      │ tasks    │      │ tools   │
 └──────┬──────┘      └────┬─────┘      └────┬────┘
        │ ✗                │ ✗              │
-   (无匹配action)    (无匹配skill)    ┌──────▼──────┐
-                                  │ MCP 返回数据  │
-                                  │ 25°C, 湿度60% │
+   (no action match) (no skill match)  ┌────▼──────┐
+                                  │ MCP returns │
+                                  │ 25°C,        │
+                                  │ humidity 60% │
                                   └──────┬──────┘
                                          │
                                     ┌────▼─────┐
-                                    │ LLM 润色  │
-                                    │ "杭州今天  │
-                                    │  25°C..."  │
+                                    │ LLM      │
+                                    │ polish:  │
+                                    │ "It's    │
+                                    │ 25°C in  │
+                                    │ Hangzhou" │
                                     └──────────┘
 ```
 
-| 层级 | 触发方式 | 回注 LLM | 配置 | 典型场景 |
+| Layer | Trigger | Injected Back into LLM | Config | Typical Use |
 |------|----------|----------|------|----------|
-| **action** | keyword或LLM均可独立触发 | 不回注 | `actions.json` | 开灯、空调、音量、休眠 |
-| **skill** | 仅 LLM | 必回注 | `skills/*/SKILL.md` | 今日简报（内部调 MCP） |
-| **MCP** | 仅 LLM | 必回注 | `mcp_tools.json` | 天气、时间、新闻、偏好 |
+| **action** | keyword or LLM, either independently | No | `actions.json` | Lights, AC, volume, sleep |
+| **skill** | LLM only | Yes | `skills/*/SKILL.md` | Daily briefing (internally calls MCP) |
+| **MCP** | LLM only | Yes | `mcp_tools.json` | Weather, time, news, preferences |
 
-**设计优势**：
-- **LLM 可见所有工具**：action 全量 / skill 仅摘要 / MCP 全量
-- **skill 跟 Agent 对齐**：文件夹 + SKILL.md（YAML frontmatter），Phase 1 摘要 → Phase 2 完整加载
-- **MCP 遵循 JSON-RPC 2.0**：标准 inputSchema 格式，HTTP 类型纯配置
-- **配置驱动**：增删 action/MCP 无需改 C++，增删 skill 只需加文件夹
+**Design advantages**:
+- **LLM sees all tools**: action fully / skill only summary / MCP fully
+- **Skill aligned with Agent**: folder + SKILL.md (YAML frontmatter), Phase 1 summary → Phase 2 full load
+- **MCP follows JSON-RPC 2.0**: standard inputSchema format; HTTP type is pure configuration
+- **Configuration-driven**: adding/removing actions or MCPs requires no C++ changes; adding a skill is just adding a folder
 
-### 3. TTS 流式管线
+### 3. Streaming TTS Pipeline
 
-生产者-消费者模式实现播放与合成真正并行：
+Producer-consumer pattern makes synthesis and playback truly parallel:
 
 ```
-主线程（生产者）             后台线程（消费者）
+Main thread (producer)              Background thread (consumer)
      │                            │
-     ├─ 合成句子1 → PCM入队 → 收到通知 → aplay播放
+     ├─ synth sentence 1 → PCM enqueue → notified → aplay plays
      │   (notify)                 │
-     ├─ 合成句子2 → PCM入队       ├─ 出队 → aplay播放
-     │   (与播放并行!)             │   (句子1播放时，句子2已就绪)
-     └─ ...                       └─ ...
+     ├─ synth sentence 2 → PCM enqueue    ├─ dequeue → aplay plays
+     │   (parallel with playback!)        │   (while sentence 1 plays,
+     └─ ...                               │    sentence 2 is already ready)
+                                         └─ ...
 ```
 
-用户感知的首句延迟 = 首句合成时间（非全文合成时间），后续句子零等待。
+Perceived first-sentence latency = synthesis time of the first sentence (not the whole text); subsequent sentences wait zero time.
 
-### 4. ASR 多引擎自适应表决
+### 4. Adaptive Multi-Engine ASR Voting
 
-主引擎（普通话）+ 方言引擎并行识别，置信度加权：
+The primary engine (Mandarin) and a dialect engine recognize in parallel, weighted by confidence:
 
-- 结果一致 → 置信度叠加
-- 方言引擎置信度更高 → 优先采纳
-- 主引擎独立运行 → 方言出错不影响核心功能
+- Results agree → confidences add up
+- Dialect engine has higher confidence → adopted first
+- Primary engine runs independently → a dialect error never breaks core functionality
 
-### 5. 嵌入式友好
+### 5. Embedded-Friendly
 
-- **单二进制**：5.3MB ARM ELF，无运行时依赖
-- **无数据库**：记忆系统基于 Markdown 文件
-- **无 Python/Node.js**：纯 C++14，无 GC 停顿
-- **EGLIBC 2.19 兼容**：Linaro GCC 4.9.4 + 多层符号存根，全静态链接
+- **Single Binary**: 5.3MB ARM ELF, no runtime dependencies
+- **No Database**: memory system is based on Markdown files
+- **No Python/Node.js**: pure C++14, no GC pauses
 
 ---
 
-## 快速开始
+## Quick Start
 
-### 前置条件
+### Prerequisites
 
-- 正点原子 i.MX6ULL 开发板（阿尔法/EMC 版本）+ WM8960 音频
-- 麦克风 + 喇叭/耳机
-- 网络连接（WiFi/以太网）
-- 讯飞开放平台账号（ASR/LLM/TTS API 凭据）
+- ALIENTEK i.MX6ULL development board (Alpha/EMC version) + WM8960 audio
+- Microphone + speaker/headphones
+- Network connection (WiFi/Ethernet)
+- iFlytek Open Platform account (ASR/LLM/TTS API credentials)
 
-### 1. 编译
+### 1. Build
 
 ```bash
 cd ai_assistant
 
-# 首次环境准备（仅需一次）
-bash scripts/build_tflite_arm.sh         # TFLite ARM 库
-bash scripts/build_openssl_arm.sh        # OpenSSL ARM 静态库
-bash scripts/download_kissfft.sh         # kissfft 轻量 FFT 库
+# First-time environment setup (only once)
+bash scripts/build_tflite_arm.sh         # TFLite ARM library
+bash scripts/build_openssl_arm.sh        # OpenSSL ARM static library
+bash scripts/download_kissfft.sh         # kissfft lightweight FFT library
 
-# 编译（TFLite 模式！）
+# Build
 bash scripts/cross_compile.sh release tflite
 ```
 
-> ⚠️ **重要**：开发板使用 EGLIBC 2.19，必须加 `tflite` 参数使用 Linaro GCC 4.9.4 编译。
+> ⚠️ **Important**: The board uses EGLIBC 2.19, so the `tflite` flag is required to compile with Linaro GCC 4.9.4.
 
-### 2. 配置
+### 2. Configure
 
-编辑 `config/assistant.conf`，填入讯飞凭据：
+Edit `config/assistant.conf` and fill in your iFlytek credentials:
 
 ```ini
 [cloud]
-app_id = 你的APPID
-api_key = 你的APIKey
-api_secret = 你的APISecret
+app_id = YOUR_APPID
+api_key = YOUR_APIKey
+api_secret = YOUR_APISecret
 
 [llm]
-api_key = 你的星火Key
+api_key = YOUR_SPARK_KEY
 
 [tts]
-auth = 你的TTS Auth Token
+auth = YOUR_TTS_AUTH_TOKEN
 ```
 
-### 3. 部署
+### 3. Deploy
 
 ```bash
-bash scripts/deploy.sh <开发板IP>
+bash scripts/deploy.sh <BOARD_IP>
 ```
 
-### 4. 运行
+### 4. Run
 
 ```bash
-# SSH 登录开发板
+# SSH into the board
 cd /ai_assistant
-sh mic_in_config.sh                       # 配置声卡（每次重启一次）
-./ai_assistant -c config/assistant.conf   # 启动助手
+sh mic_in_config.sh                       # Configure the sound card (once per reboot)
+./ai_assistant -c config/assistant.conf   # Start the assistant
 ```
 
-听到唤醒提示音后，说"小九小九"开始对话！
+Once you hear the wake-up beep, say "小九小九" (Xiaojiu) to start talking!
 
 ---
 
-## 配置说明
+## Configuration
 
-所有配置在 `config/assistant.conf`，分节如下：
+All configuration lives in `config/assistant.conf`, organized in sections:
 
-| 节 | 说明 |
+| Section | Description |
 |------|------|
-| `[audio]` | 录音/播放设备、采样率、VAD 超时 |
-| `[kws]` | 模型路径、检测阈值、唤醒词 |
-| `[cloud]` | 讯飞 API 凭据（ASR/LLM/TTS 共用） |
-| `[asr]` | ASR WebSocket 地址、方言引擎、表决策略 |
-| `[llm]` | 星火 API 地址、Key、模型名 |
-| `[tts]` | TTS WebSocket 地址、认证方式、音色 |
-| `[memory]` | 记忆目录、MEMORY.md 索引 |
-| `[agent]` | Prompt 路径、技能配置、最大工具轮数 |
-| `[system]` | 调试模式、网络回退 |
+| `[audio]` | Record/playback devices, sample rate, VAD timeout |
+| `[kws]` | Model path, detection threshold, wake word |
+| `[cloud]` | iFlytek API credentials (shared by ASR/LLM/TTS) |
+| `[asr]` | ASR WebSocket address, dialect engine, voting strategy |
+| `[llm]` | iFlytek Spark API address, key, model name |
+| `[tts]` | TTS WebSocket address, authentication method, voice |
+| `[memory]` | Memory directory, MEMORY.md index |
+| `[agent]` | Prompt path, skill config, max tool-call rounds |
+| `[system]` | Debug mode, network fallback |
 
-详细参数说明见配置文件内注释。
+See the comments inside the config file for detailed parameter descriptions.
 
 ---
 
-## 技能系统
+## Skill System
 
-项目采用三层架构配置驱动：
+The project is configuration-driven with a three-layer architecture:
 
-### Action 操作类
+### Action — Direct Operations
 
-| Action | 触发词 | 说明 |
+| Action | Trigger Words | Description |
 |--------|--------|------|
-| 💡 `action.light_on/off` | 打开灯、开灯 / 关灯 | 红外控制灯光 |
-| 🌡️ `action.ac_*` | 开空调、温度调高/低 | 红外控制空调 |
-| 🔊 `action.vol_up/down` | 大声点、小声点 | 系统音量调节 |
-| 😴 `action.sleep` | 休眠、待机、睡觉、休息 | 进入低功耗休眠 |
-| ⚙️ `action.set_preference` | 记住、设置、偏好 | 持久化到 agent_prompt.md 可改动区 |
+| 💡 `action.light_on/off` | 打开灯 / 开灯 / 关灯 | IR-controlled lighting |
+| 🌡️ `action.ac_*` | 开空调 / 温度调高 / 温度调低 | IR-controlled AC |
+| 🔊 `action.vol_up/down` | 大声点 / 小声点 | System volume control |
+| 😴 `action.sleep` | 休眠 / 待机 / 睡觉 / 休息 | Enter low-power sleep |
+| ⚙️ `action.set_preference` | 记住 / 设置 / 偏好 | Persisted to the editable region of agent_prompt.md |
 
-### Skill 智能任务类
+### Skill — Smart Tasks
 
-| Skill | 依赖 MCP | 说明 |
+| Skill | MCP Dependencies | Description |
 |-------|----------|------|
-| 📋 `skill.daily_briefing` | `get_weather`, `get_time` | LLM 综合生成今日简报 |
+| 📋 `skill.daily_briefing` | `get_weather`, `get_time` | LLM synthesizes today's briefing |
 
-### MCP 数据工具类
+### MCP — Data Tools
 
-| MCP | 数据源 | 说明 |
+| MCP | Data Source | Description |
 |-----|--------|------|
-| 🌤️ `get_weather` | wttr.in HTTP API (JSON) | 实时天气 + 未来 3 天预报（温度、湿度、风力、天气状况） |
-| 🕐 `get_time` | 系统 `date` 命令 | 本地时间，支持 15+ 时区（POSIX TZ 映射） |
-| 📰 `get_news` | 需配置 API 地址 | 今日热点新闻 |
+| 🌤️ `get_weather` | wttr.in HTTP API (JSON) | Live weather + 3-day forecast (temperature, humidity, wind, conditions) |
+| 🕐 `get_time` | system `date` command | Local time, supports 15+ timezones (POSIX TZ mapping) |
+| 📰 `get_news` | configurable API endpoint | Today's trending news |
 
-### 自定义扩展
+### Custom Extensions
 
-**添加 Action**（硬件操作，keyword或LLM均可独立触发）：
-编辑 `config/actions.json`，添加新条目：
+**Add an Action** (hardware operation; keyword or LLM can trigger it independently):
+Edit `config/actions.json` and add a new entry:
 
 ```json
 {
-    "name": "示例操作",
-    "description": "这是一个示例操作",
-    "triggers": ["触发词1", "触发词2"],
+    "name": "Example action",
+    "description": "This is an example action",
+    "triggers": ["trigger word 1", "trigger word 2"],
     "action": "action.example",
     "category": "control"
 }
 ```
 
-**添加 Skill**（仅 LLM 触发，需回注）：
-创建 `skills/新技能/SKILL.md`：
+**Add a Skill** (LLM-triggered only, injected back):
+Create `skills/new-skill/SKILL.md`:
 
 ```markdown
 ---
-name: 新技能
-description: 技能描述
+name: new-skill
+description: Skill description
 tools:
   - mcp.get_weather
 ---
-# 技能正文
+# Skill body
 ```
 
-**添加 MCP 工具**（仅 LLM 触发，JSON-RPC 2.0）：
-编辑 `config/mcp_tools.json`，添加工具定义。
+**Add an MCP tool** (LLM-triggered only, JSON-RPC 2.0):
+Edit `config/mcp_tools.json` and add the tool definition.
 
 ---
 
-## 项目结构
+## Project Structure
 
 ```
 ai_assistant/
-├── CMakeLists.txt                  # CMake 构建系统
-├── README.md                       # 用户手册（本文件）
-├── CLAUDE.md                       # AI 辅助开发文档
-├── DEVELOPMENT_LOG.md              # 问题与解决方案记录
-├── config/                         # 运行时配置
-│   ├── assistant.conf              # 主配置
-│   ├── agent_prompt.md             # Agent 全局 Prompt
-│   ├── actions.json                # Action 定义（关键词或LLM均可独立触发）
-│   ├── mcp_tools.json              # MCP 工具定义（JSON-RPC 2.0）
-│   └── wakeup.wav                  # 唤醒提示音
-├── skills/                         # Skill 目录（SKILL.md）
-│   └── daily_briefing/SKILL.md     # 今日简报
-├── memory/                         # MEMORY.md 索引（偏好本体在 agent_prompt.md 可改动区）
-├── include/assistant/              # 头文件
-│   ├── core/                       # 核心框架
-│   ├── audio/                      # 音频采集/播放/VAD
-│   ├── kws/                        # KWS 唤醒引擎
-│   ├── agent/                      # Agent 架构
-│   ├── cloud/                      # 云端服务
-│   ├── command/                    # 红外命令
-│   └── sensitive/                  # 敏感词过滤
-├── src/                            # 源文件（与 include 一一对应）
-├── scripts/                        # 辅助脚本
-│   ├── cross_compile.sh            # 主编译脚本
-│   ├── build_tflite_arm.sh         # TFLite ARM 编译
-│   ├── build_openssl_arm.sh        # OpenSSL ARM 编译
-│   ├── deploy.sh                   # 部署脚本
-│   ├── train_kws.py                # KWS 模型训练
-│   └── mic_in_config.sh            # 声卡配置
-├── models/                         # KWS 模型文件
-├── third_party/                    # 第三方库
+├── CMakeLists.txt                  # CMake build system
+├── README.zh.md                    # User manual (Chinese)
+├── README.md                       # User manual (English, this file)
+├── config/                         # Runtime configuration
+│   ├── assistant.conf              # Main config
+│   ├── agent_prompt.md             # Global Agent prompt
+│   ├── actions.json                # Action definitions (keyword or LLM, either triggers)
+│   ├── mcp_tools.json              # MCP tool definitions (JSON-RPC 2.0)
+│   └── wakeup.wav                  # Wake-up beep
+├── skills/                         # Skill directory (SKILL.md)
+│   └── daily_briefing/SKILL.md     # Daily briefing
+├── memory/                         # MEMORY.md index (preferences live in the editable region of agent_prompt.md)
+├── include/assistant/              # Headers
+│   ├── core/                       # Core framework
+│   ├── audio/                      # Audio capture/playback/VAD
+│   ├── kws/                        # KWS wake-word engine
+│   ├── agent/                      # Agent architecture
+│   ├── cloud/                      # Cloud services
+│   ├── command/                    # IR commands
+│   └── sensitive/                  # Sensitive-word filtering
+├── src/                            # Source files (mirrors include/)
+├── scripts/                        # Helper scripts
+│   ├── cross_compile.sh            # Main build script
+│   ├── build_tflite_arm.sh         # TFLite ARM build
+│   ├── build_openssl_arm.sh        # OpenSSL ARM build
+│   ├── deploy.sh                   # Deploy script
+│   ├── train_kws.py                # KWS model training
+│   └── mic_in_config.sh            # Sound card config
+├── models/                         # KWS model files
+├── third_party/                    # Third-party libraries
 │   ├── tflite/                     # TensorFlow Lite ARM
 │   ├── openssl/                    # OpenSSL ARM
-│   └── kissfft/                    # 轻量 FFT
-└── build/                          # 编译产物
+│   └── kissfft/                    # Lightweight FFT
+└── build/                          # Build artifacts
 ```
 
 ---
 
-## 编译与部署
+## Build & Deployment
 
-### 编译模式
+### Build Modes
 
-| 模式 | 命令 | 编译器 | GLIBC | 体积 | 用途 |
+| Mode | Command | Compiler | GLIBC | Size | Use |
 |------|------|--------|-------|------|------|
-| **TFLite** ✅ | `cross_compile.sh release tflite` | Linaro 4.9.4 | ≤ 2.17 | ~5.3MB | 开发板运行 |
-| 普通 ❌ | `cross_compile.sh release` | arm-linux-gnueabihf-g++ | ≥ 2.34 | ~1.7MB | 仅 PC 语法检查 |
+| **TFLite** ✅ | `cross_compile.sh release tflite` | Linaro 4.9.4 | ≤ 2.17 | ~5.3MB | Runs on the board |
+| Plain ❌ | `cross_compile.sh release` | arm-linux-gnueabihf-g++ | ≥ 2.34 | ~1.7MB | PC syntax check only |
 
-### 完整流程
+### Full Flow
 
 ```bash
-# Step 1: 工具链（需预先安装 Linaro GCC 4.9.4）
+# Step 1: Toolchain (Linaro GCC 4.9.4 must be preinstalled)
 export PATH="/opt/arm-linux-gnueabihf/bin:$PATH"
 
-# Step 2: 编译依赖库（首次执行，后续可跳过）
+# Step 2: Build dependency libraries (first run only, can skip later)
 bash scripts/build_tflite_arm.sh         # → third_party/tflite/lib/libtensorflow-lite.a
 bash scripts/build_openssl_arm.sh        # → third_party/openssl/lib/libssl.a, libcrypto.a
 bash scripts/download_kissfft.sh         # → third_party/kissfft/
 
-# Step 3: 编译应用
+# Step 3: Build the app
 bash scripts/cross_compile.sh release tflite   # → build/ai_assistant
 
-# Step 4: 验证 GLIBC 兼容
+# Step 4: Verify GLIBC compatibility
 arm-linux-gnueabihf-readelf -a build/ai_assistant | grep GLIBC_ | sort -Vu
-# 合格: GLIBC_2.4, 2.6, 2.16, 2.17
-# 不合格: 出现 2.25/2.33/2.34 → 重编译加 tflite
+# Pass: GLIBC_2.4, 2.6, 2.16, 2.17
+# Fail: 2.25/2.33/2.34 present → rebuild with the tflite flag
 
-# Step 5: 部署
-bash scripts/deploy.sh 192.168.1.100
+# Step 5: Deploy
+Deploy manually to the board directory, e.g. via NFS mount
 ```
 
-### 开发板部署目录
+### Board Deployment Layout
 
 ```
 /ai_assistant/
-├── ai_assistant              # 主程序 (5.3MB ARM ELF)
+├── ai_assistant              # Main program (5.3MB ARM ELF)
 ├── config/
 │   ├── assistant.conf
 │   ├── agent_prompt.md
@@ -478,67 +492,54 @@ bash scripts/deploy.sh 192.168.1.100
 └── mic_in_config.sh
 ```
 
-### KWS 模型训练（可选）
+### KWS Model Training (Optional)
 
 ```bash
 pip install tensorflow librosa sounddevice scikit-learn
-python scripts/train_kws.py --record --count 100    # 录制数据
-python scripts/train_kws.py --train --quantize --test  # 训练+量化+验证
+python scripts/train_kws.py --record --count 100    # Record data
+python scripts/train_kws.py --train --quantize --test  # Train + quantize + validate
 # → models/kws_model.tflite (Float16, ~120KB)
 ```
 
 ---
 
-## 技术栈
+## Tech Stack
 
-| 层级 | 技术 |
+| Layer | Technology |
 |------|------|
-| **语言** | C++14（GCC 4.9.4） |
-| **构建** | CMake 3.16+，交叉编译 |
-| **AI 推理** | TensorFlow Lite 2.14.0 |
-| **FFT** | kissfft（仅头文件） |
-| **加密** | OpenSSL 1.1.1d（静态链接） |
-| **网络** | 自实现 TCP/TLS/HTTP/WebSocket (RFC 6455) |
-| **ASR** | 讯飞语音听写流式版 WebAPI |
-| **LLM** | 讯飞星火 Spark-X2（OpenAI 兼容） |
-| **TTS** | 讯飞超拟人合成 / SparkChain SDK |
-| **天气** | wttr.in 免费 HTTP API |
-| **播放** | ALSA aplay（WM8960 DMA 兼容方案） |
+| **Language** | C++14 (GCC 4.9.4) |
+| **Build** | CMake 3.16+, cross-compilation |
+| **AI Inference** | TensorFlow Lite 2.14.0 |
+| **FFT** | kissfft (header-only) |
+| **Crypto** | OpenSSL 1.1.1d (statically linked) |
+| **Networking** | Self-implemented TCP/TLS/HTTP/WebSocket (RFC 6455) |
+| **ASR** | iFlytek streaming speech-to-text WebAPI |
+| **LLM** | iFlytek Spark-X2 (OpenAI-compatible) |
+| **TTS** | iFlytek hyper-realistic synthesis / SparkChain SDK |
+| **Weather** | wttr.in free HTTP API |
+| **Playback** | ALSA aplay (WM8960 DMA-compatible solution) |
 
 ---
 
-## 常见问题
+## FAQ
 
-### 编译：找不到 `arm-linux-gnueabihf-g++`
+### Wake-up is not sensitive enough
 
-安装 Linaro GCC 4.9.4 工具链：
+Lower the `[kws] threshold` in `config/assistant.conf` (default 0.97). Be aware that going too low increases false wake-ups.
 
-```bash
-wget https://releases.linaro.org/components/toolchain/binaries/4.9-2017.01/arm-linux-gnueabihf/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
-sudo tar -xf gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz -C /opt/
-```
+### How do I add a new voice command
 
-### 运行：`GLIBC_2.34 not found`
+Edit `config/actions.json` to add an Action (keyword-triggered + LLM-called), or create a new `skills/*/SKILL.md` to add a Skill (LLM-triggered only).
 
-编译时没加 `tflite` 参数。重新用 `bash scripts/cross_compile.sh release tflite` 编译。
+### Debug mode
 
-### 唤醒不灵敏
-
-调低 `config/assistant.conf` 中 `[kws] threshold`（默认 0.97），注意过低会增加误唤醒。
-
-### 如何添加新语音指令
-
-编辑 `config/actions.json` 添加 Action（关键词触发 + LLM 调用），或新建 `skills/*/SKILL.md` 添加 Skill（仅 LLM 触发）。
-
-### 调试模式
-
-设置 `[system] debug_mode = true`，重启后打印所有 API 请求/响应、KWS 推理分数，保存 `asr_debug_input.pcm` 和 `tts_debug.pcm`。
+Set `[system] debug_mode = true`, restart, and it will print all API requests/responses and KWS inference scores, and save `asr_debug_input.pcm` and `tts_debug.pcm`.
 
 ---
 
-## 许可证
+## License
 
-MIT License — 仅供学习和研究使用。
+MIT License — for learning and research purposes only.
 
 ---
 
