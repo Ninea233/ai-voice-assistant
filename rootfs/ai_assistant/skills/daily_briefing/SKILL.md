@@ -1,7 +1,6 @@
 ---
 name: daily_briefing
 description: 综合天气、时间、新闻生成今日简报（LLM 判断触发）
-trigger_mode: llm_only
 category: utility
 priority: 5
 tools:

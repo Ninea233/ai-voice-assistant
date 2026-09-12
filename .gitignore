@@ -12,3 +12,6 @@ ai_assistant/*.pcm
 ai_assistant/playback.wav
 ai_assistant/sparkchain.log
 
+# 唤醒词训练样本（本地数据，不入库）
+rootfs/ai_assistant/data/
+
