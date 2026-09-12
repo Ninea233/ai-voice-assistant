@@ -1,6 +1,6 @@
 /*
  * mcp_tools.cpp
- * MCP 工具调用框架实现 v2.3
+ * MCP 工具调用框架实现 v2.3.1
  *
  * MCP JSON-RPC 2.0 协议 + 内置 <tool_call> 标记兼容
  * 工具来自 config/mcp_tools.json（全量发送给 LLM）
@@ -398,7 +398,7 @@ ToolResult MCPTools::ExecuteHTTPTool(const MCPToolDef& tool, const ToolCall& cal
 
     std::cout << kTag << " [HTTP] " << tool.impl_method << " " << url << std::endl;
 
-    /* 特殊处理 worldtimeapi 响应 */
+    /* 尝试解析 JSON 中的关键字段（如 datetime） */
     HttpClient http;
     std::map<std::string, std::string> headers;
     HttpResponse resp;
@@ -422,7 +422,7 @@ ToolResult MCPTools::ExecuteHTTPTool(const MCPToolDef& tool, const ToolCall& cal
                            + day + "\xe6\x97\xa5 " + hour + ":" + min + ":" + sec
                            + " (" + tz + ")";
         } else {
-            /* 非 worldtimeapi 响应，直接返回（截断过长内容） */
+            /* 无 datetime 字段，直接返回原始响应（截断过长内容） */
             if (resp.body.size() > 256) {
                 result.content = resp.body.substr(0, 253) + "...";
             } else {

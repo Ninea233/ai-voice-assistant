@@ -3,8 +3,8 @@
  * 讯飞平台认证辅助函数
  *
  * 提供：
- * 1. 标准 WebSocket 认证 URL 生成（HMAC-SHA1 + Base64）
- * 2. TTS 令牌认证
+ * 1. 标准 WebSocket 认证 URL 生成（HMAC-SHA256 + Base64）
+ * 2. Base64 URL Safe 编码
  */
 
 #ifndef AI_ASSISTANT_XFYUN_AUTH_H

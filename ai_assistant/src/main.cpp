@@ -5,8 +5,9 @@
  * 使用方式:
  *   ./ai_assistant -c /path/to/assistant.conf
  *
- * 编译（交叉编译）:
- *   arm-linux-gnueabihf-g++ -std=c++14 ... -lasound -lpthread
+ * 编译:
+ *   bash scripts/cross_compile.sh release tflite
+ *   （详见 README.md / CLAUDE.md 编译章节）
  */
 
 #include <csignal>
@@ -46,7 +47,7 @@ int main(int argc, char* argv[]) {
     }
 
     std::cout << "========================================" << std::endl;
-    std::cout << "   AI 语音智能助手 v1.0" << std::endl;
+    std::cout << "   AI 语音智能助手 v2.3.1" << std::endl;
     std::cout << "   平台: i.MX6ULL (Cortex-A7)" << std::endl;
     std::cout << "   配置: " << config_path << std::endl;
     std::cout << "========================================" << std::endl;

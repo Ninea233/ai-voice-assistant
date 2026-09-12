@@ -110,6 +110,8 @@ bool WebSocketClient::Connect(const std::string& url) {
 
     /* 连接 TCP/TLS */
     sock_ = new TlsSocket();
+    /* 必须在 Connect() 之前下发：该值同时约束 TLS 握手与后续每次读 */
+    sock_->SetRecvTimeout(recv_timeout_sec_);
     if (!sock_->Connect(host, port)) {
         std::cerr << kTag << " 连接失败: " << host << ":" << port << std::endl;
         delete sock_;
@@ -273,7 +275,7 @@ bool WebSocketClient::RecvFrame(WsOpcode& opcode, std::vector<uint8_t>& data) {
     }
 
     bool fin = (header[0] & 0x80) != 0;
-    (void)fin;  /* 用于 continuation 帧拼接 */
+    (void)fin;  /* FIN 位（当前未使用，continuation 帧拼接尚未实现） */
     opcode = static_cast<WsOpcode>(header[0] & 0x0F);
     bool masked = (header[1] & 0x80) != 0;
     uint64_t payload_len = header[1] & 0x7F;
@@ -351,8 +353,7 @@ bool WebSocketClient::RecvText(std::string& text) {
             text.append(reinterpret_cast<const char*>(data.data()), data.size());
         }
 
-        /* FIN=1 表示消息结束（无后续 continuation 帧） */
-        /* 我们通过 opcode 判断：TEXT 帧的 FIN=1 就是完整消息 */
+        /* 注意：当前仅读取单帧，未按 FIN 位处理分片消息。如遇服务端发送分片（FIN=0），本函数仅返回首帧数据。 */
         break;
     }
 

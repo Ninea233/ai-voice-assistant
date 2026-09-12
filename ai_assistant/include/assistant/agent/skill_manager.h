@@ -1,6 +1,6 @@
 /*
  * skill_manager.h
- * Skill 管理器 v2.3
+ * Skill 管理器 v2.3.1
  *
  * 每个 Skill 是一个文件夹，包含 SKILL.md 文件（YAML frontmatter + Markdown 正文）。
  * 可选子目录：scripts/、references/、assets/。

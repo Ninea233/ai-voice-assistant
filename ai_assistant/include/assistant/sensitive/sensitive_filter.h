@@ -8,7 +8,7 @@
  * 支持三种动作:
  *   SILENCE - 静默忽略（假装没听到）
  *   REPLACE - 替换为 ***
- *   ALERT   - 报警记录（写入日志和记忆）
+ *   ALERT   - 标记报警（文本仍做替换处理，上层可检查 Detect 结果做日志记录）
  */
 
 #ifndef AI_ASSISTANT_SENSITIVE_FILTER_H

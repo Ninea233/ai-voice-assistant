@@ -9,6 +9,7 @@
 #define AI_ASSISTANT_HTTP_CLIENT_H
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <string>
 
@@ -23,6 +24,9 @@ struct HttpResponse {
 
 class HttpClient {
 public:
+    /* 流式响应体回调：每收到一段响应体调用一次，返回 false 表示中止接收 */
+    using BodyChunkCallback = std::function<bool(const std::string& chunk)>;
+
     HttpClient();
     ~HttpClient();
 
@@ -31,6 +35,15 @@ public:
               const std::string& body,
               const std::map<std::string, std::string>& extra_headers,
               HttpResponse& response);
+
+    /* 流式 POST：边收边回调，用于 SSE（text/event-stream）。
+     * 支持 Transfer-Encoding: chunked 与普通响应体两种形式。
+     * 回调返回 false 或收到 chunked 结束块时停止接收。 */
+    bool PostStream(const std::string& url,
+                    const std::string& body,
+                    const std::map<std::string, std::string>& extra_headers,
+                    const BodyChunkCallback& on_chunk,
+                    HttpResponse& response);
 
     /* GET 请求 */
     bool Get(const std::string& url,

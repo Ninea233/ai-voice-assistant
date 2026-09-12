@@ -1,6 +1,6 @@
 /*
  * mcp_tools.h
- * MCP（Model Context Protocol）工具调用框架 v2.3
+ * MCP（Model Context Protocol）工具调用框架 v2.3.1
  *
  * 遵循 MCP JSON-RPC 2.0 协议：
  *   - 初始化: initialize → server info

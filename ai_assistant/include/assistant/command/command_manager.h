@@ -2,7 +2,9 @@
  * command_manager.h
  * 键值对指令集管理器
  *
- * 读取 commands.json（key-value 格式）,
+ * 读取 JSON 指令文件（key-value 格式）,
+ * 注意：本类为遗留代码，已被 Action 系统（actions.json + ActionManager）取代，
+ * 当前无任何调用方引用。
  * 将 ASR 文本与命令 Key 做子串匹配，最长匹配优先。
  *
  * 匹配流程:

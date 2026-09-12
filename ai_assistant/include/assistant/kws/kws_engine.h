@@ -23,7 +23,7 @@ public:
     /* 初始化引擎，加载模型 */
     virtual bool Initialize(const std::string& model_path, float threshold) = 0;
 
-    /* 处理音频帧（通常 20ms），检测是否包含唤醒词 */
+    /* 处理音频帧，检测是否包含唤醒词 */
     virtual void ProcessAudio(const std::vector<int16_t>& audio_frame) = 0;
 
     /* 当前帧是否检测到唤醒词 */

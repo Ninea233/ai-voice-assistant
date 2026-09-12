@@ -1,6 +1,6 @@
 /*
  * assistant.cpp
- * AI 语音助手主控制器实现 v2.3
+ * AI 语音助手主控制器实现 v2.3.1
  *
  * 三层架构: action > skill > MCP
  *   action: keyword + LLM 触发，不回注（硬件操作）
@@ -30,8 +30,8 @@ static bool FileExists(const std::string& path) {
 /* ========== 工厂函数声明 ========== */
 std::unique_ptr<ASRClient> CreateASRClient();
 std::unique_ptr<LLMClient> CreateLLMClient();
-std::unique_ptr<TTSClient> CreateTTSClient();
 std::unique_ptr<KWSEngine> CreateKWSEngine(const std::string& model_path);
+/* CreateTTSClient() 已在 tts_client.h 中声明 */
 
 Assistant::Assistant()
     : audio_buffer_(16000 * 2)
@@ -46,6 +46,7 @@ Assistant::Assistant()
     asr_           = CreateASRClient();
     llm_           = CreateLLMClient();
     tts_           = CreateTTSClient();
+    parallel_tts_  = std::make_unique<ParallelTTS>();
     agent_core_    = std::make_unique<agent::AgentCore>();
     action_mgr_    = std::make_unique<agent::ActionManager>();
     skill_mgr_     = std::make_unique<agent::SkillManager>();
@@ -54,10 +55,6 @@ Assistant::Assistant()
 
 Assistant::~Assistant() {
     Stop();
-    /* 确保管线线程已退出 */
-    if (tts_pipeline_thread_ && tts_pipeline_thread_->joinable()) {
-        tts_pipeline_thread_->join();
-    }
 }
 
 /* ========== 初始化 ========== */
@@ -161,7 +158,31 @@ bool Assistant::Initialize(const std::string& config_path) {
         std::string tts_auth = config_->Get("tts", "auth", "");
         tts_->Initialize(app_id, api_key, api_secret, debug_mode, tts_auth);
         if (!tts_voice.empty()) tts_->SetVoice(tts_voice);
+
+        /* 并行 TTS：每个合成线程持有独立 TTSClient 实例（回调不可共享） */
+        parallel_tts_->SetPlayback(audio_playback_.get());
+        parallel_tts_->SetTTSFactory([app_id, api_key, api_secret, debug_mode,
+                                      tts_auth, tts_voice]() {
+            std::unique_ptr<TTSClient> client = CreateTTSClient();
+            client->Initialize(app_id, api_key, api_secret, debug_mode, tts_auth);
+            if (!tts_voice.empty()) client->SetVoice(tts_voice);
+            return client;
+        });
+
+        size_t parallel_threads = static_cast<size_t>(
+            config_->GetInt("tts", "parallel_threads", 3));
+#ifdef ENABLE_SPARKCHAIN_SDK
+        /* SparkChain SDK 的全局状态不支持多实例并发，强制单线程合成 */
+        if (parallel_threads > 1) {
+            std::cout << kTag << " [DEBUG] SparkChain SDK 模式：并行合成线程降为 1" << std::endl;
+            parallel_threads = 1;
+        }
+#endif
+        parallel_tts_->SetThreadCount(parallel_threads);
     }
+
+    /* LLM 流式输出：边收增量边切句，供并行 TTS 合成 */
+    llm_->SetStreaming(true);
 
     std::cout << kTag << " [DEBUG] 云端服务初始化完成" << std::endl;
 
@@ -193,6 +214,8 @@ void Assistant::Start() {
 
 void Assistant::Stop() {
     running_ = false;
+    /* 先中止并回收并行 TTS（可能正在合成/播放），再停录音与播放设备 */
+    if (parallel_tts_) parallel_tts_->Shutdown();
     audio_capture_->Stop();
     audio_playback_->Stop();
 }
@@ -498,162 +521,15 @@ void Assistant::SafeTTS(const std::string& text) {
     }
 }
 
-/* 检查 UTF-8 句子结束标点 */
-static bool IsSentenceEnd(const std::string& text, size_t pos) {
-    unsigned char c = static_cast<unsigned char>(text[pos]);
+/* ── 并行 TTS 播放 ── */
 
-    /* ASCII 句子结束符 */
-    if (c == '\n' || c == '!' || c == '?' || c == ';') return true;
-
-    /* UTF-8 中文标点（3字节序列） */
-    if (pos + 2 < text.size()) {
-        unsigned char c1 = static_cast<unsigned char>(text[pos]);
-        unsigned char c2 = static_cast<unsigned char>(text[pos + 1]);
-        unsigned char c3 = static_cast<unsigned char>(text[pos + 2]);
-
-        if (c1 == 0xE3 && c2 == 0x80 && c3 == 0x82) return true;  /* 。*/
-        if (c1 == 0xEF && c2 == 0xBC && c3 == 0x81) return true;  /* ！*/
-        if (c1 == 0xEF && c2 == 0xBC && c3 == 0x9F) return true;  /* ？*/
-        if (c1 == 0xEF && c2 == 0xBC && c3 == 0x9B) return true;  /* ；*/
-    }
-    return false;
-}
-
-std::vector<std::string> Assistant::SplitSentences(const std::string& text) {
-    std::vector<std::string> sentences;
-    std::string current;
-
-    for (size_t i = 0; i < text.size(); ) {
-        unsigned char c = static_cast<unsigned char>(text[i]);
-
-        /* UTF-8 字符字节长度 */
-        size_t char_len = 1;
-        if ((c & 0x80) == 0) {
-            char_len = 1;
-        } else if ((c & 0xE0) == 0xC0) {
-            char_len = 2;
-        } else if ((c & 0xF0) == 0xE0) {
-            char_len = 3;
-        } else if ((c & 0xF8) == 0xF0) {
-            char_len = 4;
-        }
-
-        if (IsSentenceEnd(text, i)) {
-            if (!current.empty()) {
-                size_t start = current.find_first_not_of(" \t\r\n");
-                if (start != std::string::npos) {
-                    sentences.push_back(current.substr(start));
-                }
-            }
-            current.clear();
-            i += (c < 0x80) ? 1 : 3;
-            continue;
-        }
-
-        for (size_t j = 0; j < char_len && i + j < text.size(); j++) {
-            current += text[i + j];
-        }
-        i += char_len;
-    }
-
-    /* 剩余内容 */
-    if (!current.empty()) {
-        size_t start = current.find_first_not_of(" \t\r\n");
-        if (start != std::string::npos) {
-            sentences.push_back(current.substr(start));
-        }
-    }
-
-    /* 合并短句 */
-    std::vector<std::string> merged;
-    for (size_t i = 0; i < sentences.size(); i++) {
-        std::string s = sentences[i];
-        size_t char_count = 0;
-        for (size_t j = 0; j < s.size(); j++) {
-            unsigned char byte = static_cast<unsigned char>(s[j]);
-            if (byte >= 0x80) {
-                char_count++;
-                while (j + 1 < s.size() && (static_cast<unsigned char>(s[j+1]) & 0xC0) == 0x80) j++;
-            } else if (byte > 32 && byte != 127) {
-                char_count++;
-            }
-        }
-        if (char_count <= 2 && !merged.empty()) {
-            merged.back() += s;
-        } else {
-            merged.push_back(s);
-        }
-    }
-
-    return merged;
-}
-
-/* ── TTS 流式管线 ── */
-
-void Assistant::StartStreamingPipeline(const std::string& text) {
-    auto sentences = SplitSentences(text);
-    if (sentences.empty()) {
-        std::cout << kTag << " 流式TTS：无有效句子" << std::endl;
-        state_machine_->TransitionTo(AssistantState::LISTENING);
-        return;
-    }
-
-    std::cout << kTag << " 流式TTS管线：共 " << sentences.size() << " 句" << std::endl;
-
-    /* 进入播放态，暂停录音 */
+void Assistant::EnterSpeakingState() {
+    /* 播放前暂停录音，避免喇叭输出被 KWS 当唤醒词 */
     audio_capture_->Pause();
     state_machine_->TransitionTo(AssistantState::SPEAKING);
+}
 
-    /* 重置管线状态 */
-    {
-        std::lock_guard<std::mutex> lock(tts_queue_mutex_);
-        tts_pcm_queue_.clear();
-        tts_queue_read_idx_ = 0;
-        tts_all_synthesized_ = false;
-    }
-
-    /* 启动后台播放线程（消费者） */
-    tts_pipeline_thread_ = std::make_unique<std::thread>(&Assistant::TTSPlaybackThread, this);
-
-    /* 当前线程逐句合成（生产者） */
-    for (size_t i = 0; i < sentences.size(); i++) {
-        if (sleep_requested_) break;
-
-        std::cout << kTag << " TTS [" << (i + 1) << "/" << sentences.size()
-                  << "]: \"" << sentences[i] << "\"" << std::endl;
-
-        bool ok = false;
-        std::vector<int16_t> pcm;
-
-        tts_->OnAudio([&](const std::vector<int16_t>& p) {
-            pcm = p;
-            ok = true;
-        });
-
-        if (tts_->Synthesize(sentences[i]) && ok && !pcm.empty()) {
-            std::lock_guard<std::mutex> lock(tts_queue_mutex_);
-            tts_pcm_queue_.push_back(std::move(pcm));
-            tts_queue_cv_.notify_one();  /* 通知播放线程有新数据 */
-        } else {
-            std::cerr << kTag << " TTS 合成失败: \"" << sentences[i] << "\"" << std::endl;
-        }
-    }
-
-    /* 标记合成完成 */
-    {
-        std::lock_guard<std::mutex> lock(tts_queue_mutex_);
-        tts_all_synthesized_ = true;
-        tts_queue_cv_.notify_one();
-    }
-
-    /* 等待播放线程完成 */
-    if (tts_pipeline_thread_ && tts_pipeline_thread_->joinable()) {
-        tts_pipeline_thread_->join();
-    }
-    tts_pipeline_thread_.reset();
-
-    /* 全部播完 */
-    std::cout << kTag << " 流式TTS完成" << std::endl;
+void Assistant::LeaveSpeakingState() {
     if (sleep_requested_) {
         sleep_requested_ = false;
         ForceSleep();
@@ -662,35 +538,19 @@ void Assistant::StartStreamingPipeline(const std::string& text) {
     }
 }
 
-void Assistant::TTSPlaybackThread() {
-    std::cout << kTag << " [管线] 播放线程启动" << std::endl;
-
-    while (true) {
-        std::vector<int16_t> pcm;
-        bool has_data = false;
-
-        {
-            std::unique_lock<std::mutex> lock(tts_queue_mutex_);
-            if (tts_queue_read_idx_ < tts_pcm_queue_.size()) {
-                pcm = std::move(tts_pcm_queue_[tts_queue_read_idx_++]);
-                has_data = true;
-            } else if (tts_all_synthesized_) {
-                /* 队列已空且合成已完成 → 退出 */
-                break;
-            } else {
-                /* 等待更多数据（最多 200ms，避免死锁） */
-                tts_queue_cv_.wait_for(lock, std::chrono::milliseconds(200));
-                continue;
-            }
-        }
-
-        if (has_data && !pcm.empty()) {
-            /* 同步播放（blocking aplay） */
-            audio_playback_->Play(pcm);
-        }
+void Assistant::StartParallelTTS(const std::string& text) {
+    if (text.empty()) {
+        state_machine_->TransitionTo(AssistantState::LISTENING);
+        return;
     }
 
-    std::cout << kTag << " [管线] 播放线程退出" << std::endl;
+    parallel_tts_->BeginRound();
+    parallel_tts_->FeedText(text);
+
+    /* FinishRound 内部会补齐无标点的残句并按序播放 */
+    EnterSpeakingState();
+    parallel_tts_->FinishRound();
+    LeaveSpeakingState();
 }
 
 /* ========== 状态机回调 ========== */
@@ -874,28 +734,46 @@ void Assistant::ProcessResult(const std::string& asr_text) {
     std::string system_prompt = BuildSystemPrompt();
     int max_rounds = mcp_tools_->MaxRounds();
     std::string final_answer;
+    bool spoken = false;   /* final_answer 是否已由并行 TTS 播报 */
+
+    /* 流式调用一轮 LLM：增量文本直接喂给并行 TTS 切句合成（合成与生成重叠）。
+     * out 收最终完整回复（含 <tool_call> 标记），返回 Chat 是否成功。 */
+    auto chat_streaming = [&](std::string& out) -> bool {
+        out.clear();
+        llm_->OnResult([&](const std::string& chunk, bool is_final) {
+            if (is_final) out = chunk;
+            else parallel_tts_->FeedText(chunk);
+        });
+        return llm_->Chat("");
+    };
 
     for (int round = 0; round <= max_rounds; round++) {
         std::string messages_json = agent_core_->BuildMessagesJson("", system_prompt);
         llm_->SetMessages(messages_json);
 
+        /* 本轮开始：合成线程池即刻消费 FeedText 提交的句子，播放门控关闭 */
+        parallel_tts_->BeginRound();
         std::string llm_response;
-        llm_->OnResult([&](const std::string& text, bool is_final) {
-            if (is_final) llm_response = text;
-        });
-
-        if (!llm_->Chat("") || llm_response.empty()) {
+        if (!chat_streaming(llm_response) || llm_response.empty()) {
+            parallel_tts_->CancelRound();
             final_answer = "抱歉，网络不太好，请再说一遍";
             break;
         }
 
         std::cout << kTag << " [Agent R" << round << "] " << llm_response.substr(0, 80) << std::endl;
 
-        /* 无工具调用 → 最终回复 */
+        /* 无工具调用 → 最终回复：放行播放并等待按序播完 */
         if (!mcp_tools_->ContainsToolCall(llm_response)) {
             final_answer = llm_response;
+            EnterSpeakingState();
+            parallel_tts_->FinishRound();
+            LeaveSpeakingState();
+            spoken = true;
             break;
         }
+
+        /* 工具调用轮：本轮无需播报，取消本轮（丢弃待合成/迟到结果，不回收线程） */
+        parallel_tts_->CancelRound();
 
         /* 解析工具调用 */
         auto calls = mcp_tools_->ParseToolCalls(llm_response);
@@ -978,18 +856,22 @@ void Assistant::ProcessResult(const std::string& asr_text) {
         user_msg << "[工具返回]\n" << tool_results;
         agent_core_->AddTurn("user", user_msg.str());
 
-        /* 达到最大轮数 → 请求最终回复 */
+        /* 达到最大轮数 → 请求最终回复（同样走流式合成 + 按序播放） */
         if (round >= max_rounds) {
             messages_json = agent_core_->BuildMessagesJson(
                 "请根据以上工具结果，生成简洁的最终回复（不超过50字）。", system_prompt);
             llm_->SetMessages(messages_json);
+
+            parallel_tts_->BeginRound();
             std::string last_response;
-            llm_->OnResult([&](const std::string& text, bool is_final) {
-                if (is_final) last_response = text;
-            });
-            if (llm_->Chat("") && !last_response.empty()) {
+            if (chat_streaming(last_response) && !last_response.empty()) {
                 final_answer = last_response;
+                EnterSpeakingState();
+                parallel_tts_->FinishRound();
+                LeaveSpeakingState();
+                spoken = true;
             } else {
+                parallel_tts_->CancelRound();
                 final_answer = tool_results;
             }
             break;
@@ -1001,8 +883,10 @@ void Assistant::ProcessResult(const std::string& asr_text) {
 
     std::cout << kTag << " 最终回复: " << final_answer << std::endl;
 
-    /* TTS 流式管线播报 */
-    StartStreamingPipeline(final_answer);
+    /* 未经流式管线播报的最终回复（action 结果、错误提示、工具兜底文本）在此播报 */
+    if (!spoken) {
+        StartParallelTTS(final_answer);
+    }
 }
 
 /* ========== System Prompt 构建 ========== */

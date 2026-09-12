@@ -1,6 +1,6 @@
 /*
  * skill_manager.cpp
- * Skill 管理器实现 v2.3
+ * Skill 管理器实现 v2.3.1
  *
  * 加载 skills/ 目录下每个子文件夹中的 SKILL.md 文件。
  * SKILL.md 格式：YAML frontmatter (---...---) + Markdown 正文。

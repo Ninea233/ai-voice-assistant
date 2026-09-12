@@ -1,6 +1,6 @@
 /*
  * action_manager.h
- * Action 管理器 v2.3
+ * Action 管理器 v2.3.1
  *
  * Action 是最高优先级的系统指令（keyword + LLM 均可触发，一定不回注）。
  * 用于直接的硬件/系统操作：开关灯、空调控制、音量调节、休眠等。

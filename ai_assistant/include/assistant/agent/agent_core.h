@@ -76,7 +76,7 @@ public:
      * 支持的模式：
      *   "添加偏好：xxx" / "加上xxx" / "以后xxx"
      *   "删除偏好：xxx" / "不要xxx了" / "去掉xxx"
-     *   "修改偏好：xxx改成yyy"
+     *   （修改偏好暂无直接语音模式，需先删除再添加）
      *
      * 返回 PreferenceResult，modified=true 表示已处理。
      */

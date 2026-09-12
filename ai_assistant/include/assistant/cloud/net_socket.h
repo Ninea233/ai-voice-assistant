@@ -22,6 +22,11 @@ public:
     /* 连接主机:端口，成功返回 true */
     bool Connect(const std::string& host, uint16_t port);
 
+    /* 设置接收超时（秒），需在 Connect() 之前调用；默认 60s。
+     * 该值约束连接建立之后的每次阻塞读（含 TLS 握手与 SSL_read），
+     * 用于把「对端无响应」的等待压到可接受范围（如 TTS 单句合成 5s）。 */
+    void SetRecvTimeout(int seconds) { recv_timeout_sec_ = seconds; }
+
     /* 发送数据（虚函数，派生类 TlsSocket 重写以支持 SSL 加密） */
     virtual bool Send(const uint8_t* data, size_t len);
     virtual bool Send(const std::string& data);
@@ -40,6 +45,7 @@ public:
 
 protected:
     int fd_ = -1;
+    int recv_timeout_sec_ = 60;   /* 接收超时（秒），见 SetRecvTimeout() */
 };
 
 /* TLS 套接字（OpenSSL 加密） */

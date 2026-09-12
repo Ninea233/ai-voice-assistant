@@ -33,6 +33,14 @@ public:
     /* 发送聊天查询（流式回复通过回调返回） */
     virtual bool Chat(const std::string& query) = 0;
 
+    /* 是否启用 SSE 流式输出。
+     * 启用后 OnResult 的语义：
+     *   is_final=false → text 为本轮增量文本（可多次回调）
+     *   is_final=true  → text 为完整回复（含 <tool_call> 标记），
+     *                    保证只处理最终结果的调用方无需改动。
+     * 若服务端不支持流式（返回普通 JSON），自动回退为非流式解析。 */
+    virtual void SetStreaming(bool enable) = 0;
+
     /* 预设完整的 messages JSON（含 system + history + user）。
      * 设置后 Chat() 将使用此 JSON 而非从 system_prompt + query 构建。
      * 调用 Chat("") 即可发送完整上下文。 */

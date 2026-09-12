@@ -5,7 +5,7 @@
  * 当前为模拟实现，所有发送操作仅打印日志。
  * 后续扩展为真实红外发射时，可使用 LIRC 或 GPIO bit-banging。
  *
- * commands.json 中 control 类型的动作值会映射为 IRCommand，
+ * actions.json 中 control 类型的动作值会映射为 IRCommand，
  * 例如 "light_on" → { device: "light", action: "on" }
  */
 

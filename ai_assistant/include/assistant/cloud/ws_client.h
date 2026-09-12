@@ -63,6 +63,10 @@ public:
     /* 设置自定义请求头（在 WebSocket 握手时发送） */
     void SetHeader(const std::string& name, const std::string& value);
 
+    /* 设置底层 socket 的接收超时（秒），需在 Connect() 之前调用；默认 60s。
+     * 用于约束「对端无响应」时的阻塞时长（TTS 单句合成取 5s）。 */
+    void SetRecvTimeout(int seconds) { recv_timeout_sec_ = seconds; }
+
     /* 设置日志回调（debug 模式） */
     void SetDebugCallback(std::function<void(const std::string&)> cb) {
         debug_cb_ = std::move(cb);
@@ -93,6 +97,7 @@ private:
     TlsSocket* sock_ = nullptr;
     bool connected_ = false;
     bool debug_mode_ = false;
+    int recv_timeout_sec_ = 60;   /* 底层 socket 接收超时（秒），见 SetRecvTimeout() */
     std::map<std::string, std::string> custom_headers_;
     std::function<void(const std::string&)> debug_cb_;
 };

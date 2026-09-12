@@ -26,7 +26,7 @@ const char* StateName(AssistantState state) {
  *   SLEEP → WAKEUP → LISTENING ⇄ PROCESSING ⇄ SPEAKING
  *            ↑          ↓              ↓           ↓
  *            └──────────┴──────────────┴───────────┘
- *                      任意状态可强制回 SLEEP
+ *                      LISTENING/PROCESSING/SPEAKING 可强制回 SLEEP
  */
 static const bool kValidTransitions[5][5] = {
     /* 当前 ↓ / 目标 →  SLEEP  WAKEUP  LISTENING  PROCESSING  SPEAKING */

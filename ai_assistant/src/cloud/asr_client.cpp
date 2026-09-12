@@ -192,7 +192,7 @@ static ASREngineResult RecognizeEngine(
     size_t total_samples = audio_data.size();
     size_t offset = 0;
 
-    /* 音频帧在 WebSocket 中作为二进制帧发送，带业务 JSON 包裹 */
+    /* 音频数据经 Base64 编码后在 WebSocket 文本帧中发送 */
     while (offset < total_samples) {
         size_t chunk = std::min(kChunkSamples, total_samples - offset);
         std::vector<int16_t> chunk_data(audio_data.begin() + offset,
@@ -344,7 +344,7 @@ static ASREngineResult VoteByConfidence(
         }
     }
 
-    /* 如果最高置信度显著高于其他（>0.15），直接采用 */
+    /* 累加文本一致的引擎置信度 */
     for (size_t i = 0; i < results.size(); i++) {
         if (i != best_idx && results[i].text == results[best_idx].text) {
             /* 文本一致，累加置信度 */

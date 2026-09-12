@@ -1,6 +1,6 @@
 /*
  * assistant.h
- * AI 语音助手主控制器 v2.3
+ * AI 语音助手主控制器 v2.3.1
  *
  * 优先级：action > skill > MCP
  *   action: keyword + LLM 触发，直执行，不回注
@@ -22,6 +22,7 @@
 #include "assistant/core/config.h"
 #include "assistant/audio/audio_capture.h"
 #include "assistant/audio/audio_playback.h"
+#include "assistant/audio/parallel_tts.h"
 #include "assistant/audio/vad.h"
 #include "assistant/kws/kws_engine.h"
 #include "assistant/cloud/asr_client.h"
@@ -35,11 +36,9 @@
 #include "assistant/agent/mcp_tools.h"
 
 #include <atomic>
-#include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <string>
-#include <thread>
 #include <vector>
 
 class Assistant {
@@ -82,9 +81,13 @@ private:
     void OnPlaybackDone();
     void PlayWakeupSound();
     void SafeTTS(const std::string& text);
-    void StartStreamingPipeline(const std::string& text);
-    void TTSPlaybackThread();
-    static std::vector<std::string> SplitSentences(const std::string& text);
+
+    /* 并行 TTS 播报一段完整文本（非流式来源：action 结果、错误提示等） */
+    void StartParallelTTS(const std::string& text);
+
+    /* 播放态进入/退出：暂停录音 + 状态机切换 */
+    void EnterSpeakingState();
+    void LeaveSpeakingState();
 
     /* 构建 LLM 系统提示词 */
     std::string BuildSystemPrompt() const;
@@ -122,13 +125,8 @@ private:
     size_t listening_silence_samples_ = 0;
     unsigned int conversation_timeout_ms_ = 10000;
 
-    /* ── TTS 流式管线 ── */
-    std::unique_ptr<std::thread> tts_pipeline_thread_;
-    std::vector<std::vector<int16_t>> tts_pcm_queue_;
-    std::mutex tts_queue_mutex_;
-    std::condition_variable tts_queue_cv_;
-    size_t tts_queue_read_idx_ = 0;
-    bool tts_all_synthesized_ = false;
+    /* ── 并行 TTS 管线（合成线程池 + Reorder Buffer + 顺序播放）── */
+    std::unique_ptr<ParallelTTS> parallel_tts_;
 
     /* ── 运行标志 ── */
     bool running_ = false;

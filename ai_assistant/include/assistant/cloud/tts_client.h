@@ -3,7 +3,7 @@
  * TTS（文本转语音）客户端接口
  *
  * 面向讯飞超拟人合成 WebSocket API。
- * 调试模式下保存合成文本和 PCM 音频到文件。
+ * 调试模式下（SDK 路径）保存 PCM 音频到 tts_debug.pcm。
  */
 
 #ifndef AI_ASSISTANT_TTS_CLIENT_H
@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -44,5 +45,9 @@ public:
 protected:
     AudioCallback audio_callback_;
 };
+
+/* 工厂函数：创建一个尚未 Initialize 的 TTS 客户端。
+ * 并行合成时每个线程持有独立实例（audio_callback_ 为实例成员，不可共享）。 */
+std::unique_ptr<TTSClient> CreateTTSClient();
 
 #endif /* AI_ASSISTANT_TTS_CLIENT_H */

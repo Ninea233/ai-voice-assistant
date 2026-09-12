@@ -3,7 +3,7 @@
  * AI 语音助手状态机
  *
  * 状态流转:
- *   SLEEP → WAKEUP → LISTENING → PROCESSING → SPEAKING → SLEEP
+ *   SLEEP → WAKEUP → LISTENING → PROCESSING → SPEAKING → LISTENING (连续对话) → ... → SLEEP
  *   SLEEP ← (任何状态) ← 空闲超时/强制休眠
  */
 

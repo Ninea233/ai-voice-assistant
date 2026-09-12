@@ -52,9 +52,10 @@ bool TcpSocket::Connect(const std::string& host, uint16_t port) {
             int flag = 1;
             setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
 
-            /* 接收超时 60 秒，防止 Recv 永久阻塞（ASR/HTTP 可能处理较慢） */
+            /* 接收超时（默认 60s，可由 SetRecvTimeout 覆盖），
+             * 防止 Recv 永久阻塞（ASR/HTTP 可能处理较慢，TTS 单句则收紧到 5s） */
             struct timeval tv;
-            tv.tv_sec = 60;
+            tv.tv_sec = recv_timeout_sec_;
             tv.tv_usec = 0;
             setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
             return true;

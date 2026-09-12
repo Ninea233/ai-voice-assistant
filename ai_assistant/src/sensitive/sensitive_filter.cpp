@@ -169,7 +169,7 @@ std::string SensitiveFilter::Filter(const std::string& text,
         if (it->action == SensitiveAction::REPLACE) {
             result.replace(it->position, it->keyword.size(), replacement);
         }
-        /* ALERT 动作也替换，但上层可以检查 Detects 返回值 */
+        /* ALERT 动作不替换，上层可以通过 Detect() 返回值自行处理 */
     }
 
     return result;

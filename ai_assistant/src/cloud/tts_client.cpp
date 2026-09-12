@@ -26,6 +26,11 @@
 
 static const char* kTag = "[TTSClient]";
 
+/* 单句合成的单次读超时：对端卡死时最长 5s 即失败返回、释放合成线程
+ *（与播放调度的 5s 等待预算一致，见 CODE.md §12.15）。
+ * 只作用于 TTS 连接——ASR/LLM 的读超时仍为默认 60s。 */
+static const int kTtsRecvTimeoutSec = 5;
+
 /* =========================================================
  * 实现 1: SparkChain SDK（编译时启用 ENABLE_SPARKCHAIN_SDK）
  * ========================================================= */
@@ -378,6 +383,7 @@ public:
 
         WebSocketClient ws;
         ws.SetDebugMode(debug_mode_);
+        ws.SetRecvTimeout(kTtsRecvTimeoutSec);   /* 卡死最长 5s，避免长期占用合成线程 */
 
         std::string connect_url;
         if (!auth_token_.empty()) {
