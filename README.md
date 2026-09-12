@@ -41,17 +41,17 @@
 
 | Feature | Engine | Description |
 |------|------|------|
-| **Speech Recognition (ASR)** | iFlytek Chinese recognition large model | Multi-engine voting (primary + dialect engine), confidence-weighted |
+| **Speech Recognition (ASR)** | iFlytek Chinese recognition large model | Multi-engine voting framework (confidence-weighted); **only the primary engine is wired up**, the dialect engine is not connected |
 | **Dialog Generation (LLM)** | iFlytek Spark-X2 | OpenAI-compatible API + native Function Calling, carries full conversation context |
-| **Speech Synthesis (TTS)** | iFlytek hyper-realistic synthesis | Streaming pipeline: synthesis and playback run in parallel, eliminating first-sentence latency |
+| **Speech Synthesis (TTS)** | iFlytek hyper-realistic synthesis | Parallel pipeline: sentences synthesized concurrently, played back in order; synthesis overlaps LLM generation, removing per-sentence synthesis latency |
 
 ### 🤖 Agent
 
 | Feature | Description |
 |------|------|
-| **Action** | Triggerable independently by keyword or LLM, executed directly without injecting back (lights/AC/volume/sleep/preferences) |
+| **Action** | Triggerable independently by keyword or LLM, executed directly without injecting back (lights/AC/volume/sleep/preferences) — the two preference actions take `key`/`value` parameters |
 | **Skill** | LLM-triggered only, two-stage SKILL.md loading, always injected back (daily briefing) |
-| **MCP** | LLM-triggered only, JSON-RPC 2.0 standard, fully visible, always injected back |
+| **MCP** | LLM-triggered only, tool definitions follow MCP's `inputSchema` field format (**JSON-RPC 2.0 is NOT implemented**), fully visible, always injected back |
 | **Short-term Memory** | Keeps the full conversation context within a wake cycle (`agent_core_->history_`) |
 | **Long-term Memory** | Preferences persisted in the editable region of `agent_prompt.md` |
 
@@ -101,9 +101,9 @@ Control home devices through voice commands:
 │                  Cloud Service Layer                  │
 │  ┌─────────┐  ┌─────────┐  ┌───────────────────┐     │
 │  │   ASR   │  │   LLM   │  │        TTS         │     │
-│  │ WSS      │  │ OpenAI  │  │ streaming pipeline │     │
-│  │ streaming│  │ Agent   │  │ (producer-consumer)│     │
-│  │ multi-   │  │         │  │ aplay cmd playback │     │
+│  │ WSS      │  │ OpenAI  │  │ parallel synthesis │     │
+│  │ streaming│  │ Agent   │  │ + ordered playback │     │
+│  │ multi-   │  │         │  │ snd_pcm_writei DMA │     │
 │  │ engine   │  │         │  │                    │     │
 │  │ voting   │  │         │  │                    │     │
 │  └────┬────┘  └────┬────┘  └─────────┬─────────┘     │
@@ -214,38 +214,37 @@ User says "How's the weather?"
 |------|----------|----------|------|----------|
 | **action** | keyword or LLM, either independently | No | `actions.json` | Lights, AC, volume, sleep |
 | **skill** | LLM only | Yes | `skills/*/SKILL.md` | Daily briefing (internally calls MCP) |
-| **MCP** | LLM only | Yes | `mcp_tools.json` | Weather, time, news, preferences |
+| **MCP** | LLM only | Yes | `mcp_tools.json` | Weather, time, news |
 
 **Design advantages**:
 - **LLM sees all tools**: action fully / skill only summary / MCP fully
 - **Skill aligned with Agent**: folder + SKILL.md (YAML frontmatter), Phase 1 summary → Phase 2 full load
-- **MCP follows JSON-RPC 2.0**: standard inputSchema format; HTTP type is pure configuration
+- **Tool definitions follow MCP style**: `inputSchema` uses MCP's field format, but **JSON-RPC 2.0 is not implemented** (no initialize/tools/list handshake); results are injected back as plain text, and `_implementation` only decides how a tool is executed (never sent to the LLM); HTTP type is pure configuration
 - **Configuration-driven**: adding/removing actions or MCPs requires no C++ changes; adding a skill is just adding a folder
 
-### 3. Streaming TTS Pipeline
+### 3. Parallel TTS Synthesis with Ordered Playback
 
-Producer-consumer pattern makes synthesis and playback truly parallel:
+LLM deltas → incremental sentence splitting → N synthesis threads run concurrently (completing **out of order**) → a Reorder Buffer sorts them by sentence index → the playback scheduler thread plays strictly in sentence order via DMA:
 
 ```
-Main thread (producer)              Background thread (consumer)
-     │                            │
-     ├─ synth sentence 1 → PCM enqueue → notified → aplay plays
-     │   (notify)                 │
-     ├─ synth sentence 2 → PCM enqueue    ├─ dequeue → aplay plays
-     │   (parallel with playback!)        │   (while sentence 1 plays,
-     └─ ...                               │    sentence 2 is already ready)
-                                         └─ ...
+LLM deltas ──→ split ──→ task queue ──→ synthesis pool (×3) ──┐
+                                        s1✓ s2… s3✓          │ out of order
+                                                             ▼
+playback scheduler ◄── only consecutive indices ◄── Reorder Buffer
+     │
+     └─ while sentence 1 plays, sentences 2/3 are already synthesized → zero wait
 ```
 
-Perceived first-sentence latency = synthesis time of the first sentence (not the whole text); subsequent sentences wait zero time.
+Gain: total synthesis latency drops from "Σ per sentence" to "≈ the slowest sentence"; synthesis overlaps with LLM generation, so first-audio latency ≈ first-sentence synthesis time.
 
-### 4. Adaptive Multi-Engine ASR Voting
+### 4. Multi-Engine ASR Voting
 
-The primary engine (Mandarin) and a dialect engine recognize in parallel, weighted by confidence:
+The primary engine (Mandarin) always runs; the voting algorithm is implemented (confidence-weighted):
 
-- Results agree → confidences add up
-- Dialect engine has higher confidence → adopted first
-- Primary engine runs independently → a dialect error never breaks core functionality
+- Single engine → its result is used directly
+- Multiple engines → take the **highest-confidence** result as the base, then **sum** the confidence of engines whose text is **identical** to it (mutual corroboration) → `confidence = min(sum, 1.0)`
+
+> ⚠️ Status: **only the primary engine is wired up**. The dialect engine's code path and config key (`[asr] dialect_enabled`) exist, but that key is never read on the C++ side, so the dialect engine does not run today.
 
 ### 5. Embedded-Friendly
 
@@ -325,7 +324,7 @@ All configuration lives in `config/assistant.conf`, organized in sections:
 | `[audio]` | Record/playback devices, sample rate, VAD timeout |
 | `[kws]` | Model path, detection threshold, wake word |
 | `[cloud]` | iFlytek API credentials (shared by ASR/LLM/TTS) |
-| `[asr]` | ASR WebSocket address, dialect engine, voting strategy |
+| `[asr]` | ASR WebSocket address, `res_id` (note: `dialect_enabled` is not wired up, see §4) |
 | `[llm]` | iFlytek Spark API address, key, model name |
 | `[tts]` | TTS WebSocket address, authentication method, voice |
 | `[memory]` | Memory directory, MEMORY.md index |
@@ -344,8 +343,8 @@ The project is configuration-driven with a three-layer architecture:
 
 | Action | Trigger Words | Description |
 |--------|--------|------|
-| 💡 `action.light_on/off` | 打开灯 / 开灯 / 关灯 | IR-controlled lighting |
-| 🌡️ `action.ac_*` | 开空调 / 温度调高 / 温度调低 | IR-controlled AC |
+| 💡 `action.light_on/off` | 打开灯 / 开灯 / 关灯 | IR-controlled lighting (**simulated implementation**) |
+| 🌡️ `action.ac_*` | 开空调 / 温度调高 / 温度调低 | IR-controlled AC (**simulated implementation**) |
 | 🔊 `action.vol_up/down` | 大声点 / 小声点 | System volume control |
 | 😴 `action.sleep` | 休眠 / 待机 / 睡觉 / 休息 | Enter low-power sleep |
 | ⚙️ `action.set_preference` | 记住 / 设置 / 偏好 | Persisted to the editable region of agent_prompt.md |
@@ -392,7 +391,7 @@ tools:
 # Skill body
 ```
 
-**Add an MCP tool** (LLM-triggered only, JSON-RPC 2.0):
+**Add an MCP tool** (LLM-triggered only):
 Edit `config/mcp_tools.json` and add the tool definition.
 
 ---
@@ -408,7 +407,7 @@ ai_assistant/
 │   ├── assistant.conf              # Main config
 │   ├── agent_prompt.md             # Global Agent prompt
 │   ├── actions.json                # Action definitions (keyword or LLM, either triggers)
-│   ├── mcp_tools.json              # MCP tool definitions (JSON-RPC 2.0)
+│   ├── mcp_tools.json              # MCP tool definitions (MCP-style inputSchema)
 │   └── wakeup.wav                  # Wake-up beep
 ├── skills/                         # Skill directory (SKILL.md)
 │   └── daily_briefing/SKILL.md     # Daily briefing
@@ -517,7 +516,7 @@ python scripts/train_kws.py --train --quantize --test  # Train + quantize + vali
 | **LLM** | iFlytek Spark-X2 (OpenAI-compatible) |
 | **TTS** | iFlytek hyper-realistic synthesis / SparkChain SDK |
 | **Weather** | wttr.in free HTTP API |
-| **Playback** | ALSA aplay (WM8960 DMA-compatible solution) |
+| **Playback** | ALSA `snd_pcm_writei` direct DMA write (no temp WAV, no child process) |
 
 ---
 

@@ -4,7 +4,7 @@
  *
  * 引擎：mandarin（中文识别，始终运行）
  *        dialect（方言识别，可选，由 config 控制）
- * 表决：confidence（置信度加权）| majority（多数投票）
+ * 表决：仅实现了 confidence（置信度加权）；majority（多数投票）未实现（配置只写不读）
  *
  * 流程（单引擎）：
  *   Connect(auth_url) → Send JSON start → Send Audio chunks

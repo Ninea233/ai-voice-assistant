@@ -41,17 +41,17 @@
 
 | 功能 | 引擎 | 说明 |
 |------|------|------|
-| **语音识别 (ASR)** | 讯飞中文识别大模型 | 多引擎表决（主引擎 + 方言引擎），置信度加权 |
+| **语音识别 (ASR)** | 讯飞中文识别大模型 | 多引擎表决框架（置信度加权）；**当前仅接入主引擎**，方言引擎未接线 |
 | **对话生成 (LLM)** | 星火 Spark-X2 | OpenAI 兼容 API + 原生 Function Calling，携带完整对话上下文 |
-| **语音合成 (TTS)** | 讯飞超拟人合成 | 流式管线：合成与播放并行，消除首句延迟 |
+| **语音合成 (TTS)** | 讯飞超拟人合成 | 并行管线：多句并发合成、按句序播放，合成与 LLM 生成重叠，消除逐句合成延迟 |
 
 ### 🤖 Agent 智能体
 
 | 功能 | 说明 |
 |------|------|
-| **Action** | keyword或LLM均可独立触发，直接执行不回注（灯光/空调/音量/休眠/偏好） |
+| **Action** | keyword或LLM均可独立触发，直接执行不回注（灯光/空调/音量/休眠/偏好）——偏好两个 action 带 `key`/`value` 参数 |
 | **Skill** | 仅 LLM 触发，SKILL.md 两阶段加载，必回注（今日简报） |
-| **MCP** | 仅 LLM 触发，JSON-RPC 2.0 标准，全量可见，必回注 |
+| **MCP** | 仅 LLM 触发，工具定义参考 MCP 的 `inputSchema` 字段格式（**未实现 JSON-RPC 2.0 协议**），全量可见，必回注 |
 | **短期记忆** | 唤醒周期内保留完整对话上下文（`agent_core_->history_`） |
 | **长期记忆** | 偏好持久化存储在 `agent_prompt.md` 可改动区 |
 
@@ -99,8 +99,8 @@
 │                   云端服务层                            │
 │  ┌─────────┐  ┌─────────┐  ┌───────────────────┐     │
 │  │   ASR   │  │   LLM   │  │        TTS         │     │
-│  │ WSS流式 │  │ OpenAI │  │ 流式管线(生产-消费)  │     │
-│  │ 多引擎表决│  │ Agent  │  │ aplay 命令行播放    │     │
+│  │ WSS流式 │  │ SSE流式 │  │ 并行合成+按序播放   │     │
+│  │ 多引擎表决│  │ Agent  │  │ ALSA DMA 直写播放   │     │
 │  └────┬────┘  └────┬────┘  └─────────┬─────────┘     │
 │       │            │                 │                 │
 │  ┌────▼────────────▼─────────────────▼──────────┐     │
@@ -199,43 +199,45 @@
 |------|----------|----------|------|----------|
 | **action** | keyword或LLM均可独立触发 | 不回注 | `actions.json` | 开灯、空调、音量、休眠 |
 | **skill** | 仅 LLM | 必回注 | `skills/*/SKILL.md` | 今日简报（内部调 MCP） |
-| **MCP** | 仅 LLM | 必回注 | `mcp_tools.json` | 天气、时间、新闻、偏好 |
+| **MCP** | 仅 LLM | 必回注 | `mcp_tools.json` | 天气、时间、新闻 |
 
 **设计优势**：
 - **LLM 可见所有工具**：action 全量 / skill 仅摘要 / MCP 全量
 - **skill 跟 Agent 对齐**：文件夹 + SKILL.md（YAML frontmatter），Phase 1 摘要 → Phase 2 完整加载
-- **MCP 遵循 JSON-RPC 2.0**：标准 inputSchema 格式，HTTP 类型纯配置
+- **工具定义参考 MCP 风格**：`inputSchema` 采用 MCP 的字段格式；**未实现 JSON-RPC 2.0 协议**（无 initialize/tools/list 握手），执行结果以纯文本回注，`_implementation` 只决定执行方式、不发 LLM；HTTP 类型纯配置
 - **配置驱动**：增删 action/MCP 无需改 C++，增删 skill 只需加文件夹
 
-### 3. TTS 流式管线
+### 3. 并行 TTS 合成与顺序播放
 
-生产者-消费者模式实现播放与合成真正并行：
+LLM 流式输出 → 增量切句 → N 个合成线程并行合成（乱序完成）→ Reorder Buffer 按序号重排 → 播放调度线程严格按句序 DMA 播放：
 
 ```
-主线程（生产者）             后台线程（消费者）
-     │                            │
-     ├─ 合成句子1 → PCM入队 → 收到通知 → aplay播放
-     │   (notify)                 │
-     ├─ 合成句子2 → PCM入队       ├─ 出队 → aplay播放
-     │   (与播放并行!)             │   (句子1播放时，句子2已就绪)
-     └─ ...                       └─ ...
+LLM 流式增量 ──→ 切句 ──→ 任务队列 ──→ 合成线程池(×3)  ──┐
+                                       句1✓ 句2… 句3✓   │ 乱序完成
+                                                         ▼
+播放调度线程 ←── 只取连续序号 ←── Reorder Buffer(按序号暂存)
+     │
+     └─ 句1播放时，句2/句3早已合成就绪 → 后续句子零等待
 ```
 
-用户感知的首句延迟 = 首句合成时间（非全文合成时间），后续句子零等待。
+收益：整段回复的合成延迟从「Σ 每句合成」压缩到「最慢 1 句」；合成与 LLM 生成重叠，首句播放延迟 ≈ 首句合成时间。
 
-### 4. ASR 多引擎自适应表决
+### 4. ASR 多引擎表决
 
-主引擎（普通话）+ 方言引擎并行识别，置信度加权：
+主引擎（普通话）始终运行；多引擎表决算法已实现（置信度加权）：
 
-- 结果一致 → 置信度叠加
-- 方言引擎置信度更高 → 优先采纳
-- 主引擎独立运行 → 方言出错不影响核心功能
+- 单引擎结果直接采用
+- 多引擎时先取**置信度最高者**为基准，再把「文本与基准完全相同」的引擎置信度**累加**（相同文本互相印证）→ `confidence = min(累加, 1.0)`
+
+> ⚠️ 现状：**只接入了主引擎**。方言引擎的框架与配置项（`[asr] dialect_enabled`）都在，但该配置在 C++ 中未被读取，因此方言引擎当前不会运行。
 
 ### 5. 嵌入式友好
 
 - **单二进制**：5.3MB ARM ELF，无运行时依赖
 - **无数据库**：记忆系统基于 Markdown 文件
 - **无 Python/Node.js**：纯 C++14，无 GC 停顿
+- **EGLIBC 2.19 兼容**：Linaro GCC 4.9.4 + 多层符号存根，全静态链接
+
 ---
 
 ## 快速开始
@@ -257,7 +259,7 @@ bash scripts/build_tflite_arm.sh         # TFLite ARM 库
 bash scripts/build_openssl_arm.sh        # OpenSSL ARM 静态库
 bash scripts/download_kissfft.sh         # kissfft 轻量 FFT 库
 
-# 编译
+# 编译（TFLite 模式！）
 bash scripts/cross_compile.sh release tflite
 ```
 
@@ -308,7 +310,7 @@ sh mic_in_config.sh                       # 配置声卡（每次重启一次）
 | `[audio]` | 录音/播放设备、采样率、VAD 超时 |
 | `[kws]` | 模型路径、检测阈值、唤醒词 |
 | `[cloud]` | 讯飞 API 凭据（ASR/LLM/TTS 共用） |
-| `[asr]` | ASR WebSocket 地址、方言引擎、表决策略 |
+| `[asr]` | ASR WebSocket 地址、`res_id`（注：`dialect_enabled` 当前未接线，见 §4） |
 | `[llm]` | 星火 API 地址、Key、模型名 |
 | `[tts]` | TTS WebSocket 地址、认证方式、音色 |
 | `[memory]` | 记忆目录、MEMORY.md 索引 |
@@ -327,8 +329,8 @@ sh mic_in_config.sh                       # 配置声卡（每次重启一次）
 
 | Action | 触发词 | 说明 |
 |--------|--------|------|
-| 💡 `action.light_on/off` | 打开灯、开灯 / 关灯 | 红外控制灯光 |
-| 🌡️ `action.ac_*` | 开空调、温度调高/低 | 红外控制空调 |
+| 💡 `action.light_on/off` | 打开灯、开灯 / 关灯 | 红外控制灯光（**模拟实现**，见下） |
+| 🌡️ `action.ac_*` | 开空调、温度调高/低 | 红外控制空调（**模拟实现**） |
 | 🔊 `action.vol_up/down` | 大声点、小声点 | 系统音量调节 |
 | 😴 `action.sleep` | 休眠、待机、睡觉、休息 | 进入低功耗休眠 |
 | ⚙️ `action.set_preference` | 记住、设置、偏好 | 持久化到 agent_prompt.md 可改动区 |
@@ -367,15 +369,17 @@ sh mic_in_config.sh                       # 配置声卡（每次重启一次）
 
 ```markdown
 ---
-name: 新技能
-description: 技能描述
-tools:
+name: new_skill                # 技能标识（英文，action 生成为 skill.new_skill）
+description: 技能描述           # 供 LLM 阅读的摘要
+category: utility              # 分类
+priority: 5                    # 优先级（数字越大越优先）
+tools:                         # 依赖的 MCP 工具列表
   - mcp.get_weather
 ---
 # 技能正文
 ```
 
-**添加 MCP 工具**（仅 LLM 触发，JSON-RPC 2.0）：
+**添加 MCP 工具**（仅 LLM 触发）：
 编辑 `config/mcp_tools.json`，添加工具定义。
 
 ---
@@ -385,13 +389,14 @@ tools:
 ```
 ai_assistant/
 ├── CMakeLists.txt                  # CMake 构建系统
-├── README.zh.md                    # 用户手册中文版（本文件）
-├── README.md                       # 用户手册英文版
+├── README.md                       # 用户手册（本文件）
+├── CLAUDE.md                       # AI 辅助开发文档
+├── DEVELOPMENT_LOG.md              # 问题与解决方案记录
 ├── config/                         # 运行时配置
 │   ├── assistant.conf              # 主配置
 │   ├── agent_prompt.md             # Agent 全局 Prompt
 │   ├── actions.json                # Action 定义（关键词或LLM均可独立触发）
-│   ├── mcp_tools.json              # MCP 工具定义（JSON-RPC 2.0）
+│   ├── mcp_tools.json              # MCP 工具定义（参考 MCP inputSchema 格式）
 │   └── wakeup.wav                  # 唤醒提示音
 ├── skills/                         # Skill 目录（SKILL.md）
 │   └── daily_briefing/SKILL.md     # 今日简报
@@ -451,7 +456,7 @@ arm-linux-gnueabihf-readelf -a build/ai_assistant | grep GLIBC_ | sort -Vu
 # 不合格: 出现 2.25/2.33/2.34 → 重编译加 tflite
 
 # Step 5: 部署
-手动部署至开发板目录下，如NFS挂载等
+bash scripts/deploy.sh 192.168.1.100
 ```
 
 ### 开发板部署目录
@@ -500,11 +505,24 @@ python scripts/train_kws.py --train --quantize --test  # 训练+量化+验证
 | **LLM** | 讯飞星火 Spark-X2（OpenAI 兼容） |
 | **TTS** | 讯飞超拟人合成 / SparkChain SDK |
 | **天气** | wttr.in 免费 HTTP API |
-| **播放** | ALSA aplay（WM8960 DMA 兼容方案） |
+| **播放** | ALSA `snd_pcm_writei` DMA 直写（无中间 WAV / 子进程） |
 
 ---
 
 ## 常见问题
+
+### 编译：找不到 `arm-linux-gnueabihf-g++`
+
+安装 Linaro GCC 4.9.4 工具链：
+
+```bash
+wget https://releases.linaro.org/components/toolchain/binaries/4.9-2017.01/arm-linux-gnueabihf/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
+sudo tar -xf gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz -C /opt/
+```
+
+### 运行：`GLIBC_2.34 not found`
+
+编译时没加 `tflite` 参数。重新用 `bash scripts/cross_compile.sh release tflite` 编译。
 
 ### 唤醒不灵敏
 

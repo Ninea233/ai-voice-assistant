@@ -72,17 +72,17 @@ public:
     /* ========== 可改动区语音修改 ========== */
 
     /*
-     * 检测用户语音中是否包含偏好修改意图。
+     * 从用户语音中提取偏好修改意图并落盘（供 action.set_preference /
+     * action.delete_preference 的**关键词触发**路径使用；LLM 触发路径直接带
+     * key/value 参数，不经过这里）。
      * 支持的模式：
-     *   "添加偏好：xxx" / "加上xxx" / "以后xxx"
+     *   "添加偏好：xxx" / "加上偏好：xxx" / "以后xxx"
      *   "删除偏好：xxx" / "不要xxx了" / "去掉xxx"
-     *   （修改偏好暂无直接语音模式，需先删除再添加）
-     *
      * 返回 PreferenceResult，modified=true 表示已处理。
      */
     PreferenceResult DetectAndApplyPreference(const std::string& text);
 
-    /* 直接添加一条偏好到可改动区 */
+    /* 直接添加一条偏好到可改动区（LLM 触发路径与上面共用） */
     bool AddMutableItem(const std::string& item);
 
     /* 删除一条偏好 */

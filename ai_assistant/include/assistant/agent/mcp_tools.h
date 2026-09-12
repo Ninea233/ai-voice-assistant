@@ -2,15 +2,15 @@
  * mcp_tools.h
  * MCP（Model Context Protocol）工具调用框架 v2.3.1
  *
- * 遵循 MCP JSON-RPC 2.0 协议：
- *   - 初始化: initialize → server info
- *   - 工具发现: tools/list → 返回工具列表（LLM 全量可见）
- *   - 工具调用: tools/call → 执行工具并返回结果
- *
- * 扩展: 同时支持内置 <tool_call> 标记格式作为 LLM 交互方式
- *
- * 每个 MCP 工具有:
+ * 工具调用框架：工具定义的字段格式参考 MCP（Model Context Protocol）
  *   name / description / inputSchema(JSON Schema) / implementation
+ *
+ * ⚠️ 注意：**未实现 JSON-RPC 2.0 协议**。没有 initialize/tools/list/tools/call
+ *    握手；ExecuteTool() 返回的是纯文本 ToolResult，不组装 JSON-RPC 响应。
+ *    下面保留的 JsonRpcRequest/JsonRpcResponse 结构体目前无任何使用（预留）。
+ *
+ * 实际交互方式：工具定义转成 OpenAI tools 数组发给 LLM，
+ *    调用结果转成内部 <tool_call> 标记解析，执行后以纯文本回注 LLM。
  *
  * 工具定义来自 config/mcp_tools.json，HTTP 类型无需改 C++。
  * MCP 工具仅 LLM 可调用，结果一定回注 LLM。
@@ -26,7 +26,7 @@
 
 namespace agent {
 
-/* ── MCP 标准结构体 ── */
+/* ── 工具定义 / 调用结构体 ── */
 
 /* 输入参数 Schema（JSON Schema 子集） */
 struct ParamSchema {
@@ -63,7 +63,7 @@ struct ToolResult {
     std::string error;
 };
 
-/* JSON-RPC 2.0 请求 */
+/* JSON-RPC 2.0 请求（预留结构体，当前无使用者） */
 struct JsonRpcRequest {
     std::string jsonrpc = "2.0";
     std::string method;          /* "tools/list", "tools/call", "initialize" */
@@ -71,7 +71,7 @@ struct JsonRpcRequest {
     int id = 1;
 };
 
-/* JSON-RPC 2.0 响应 */
+/* JSON-RPC 2.0 响应（预留结构体，当前无使用者） */
 struct JsonRpcResponse {
     std::string jsonrpc = "2.0";
     std::string result;          /* JSON 字符串 */

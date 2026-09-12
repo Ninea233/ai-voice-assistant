@@ -2,7 +2,7 @@
  * mcp_tools.cpp
  * MCP 工具调用框架实现 v2.3.1
  *
- * MCP JSON-RPC 2.0 协议 + 内置 <tool_call> 标记兼容
+ * 工具定义参考 MCP 字段格式（未实现 JSON-RPC 2.0 协议，见 mcp_tools.h 头注释）
  * 工具来自 config/mcp_tools.json（全量发送给 LLM）
  */
 
@@ -118,7 +118,7 @@ static std::vector<std::string> ExtractToolObjects(const std::string& content) {
     size_t array_start = std::string::npos;
 
     /* 支持两种格式：
-     * 1) JSON-RPC 2.0 数组格式： [...]
+     * 1) 纯数组格式： [...]
      * 2) 旧封装格式： {"tools": [...]} */
     if (!trimmed.empty() && trimmed[0] == '[') {
         /* 直接是数组 */

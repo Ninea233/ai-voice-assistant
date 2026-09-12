@@ -5,7 +5,7 @@
  * 三层架构: action > skill > MCP
  *   action: keyword + LLM 触发，不回注（硬件操作）
  *   skill:  仅 LLM 触发，必回注（SKILL.md → 完整执行）
- *   MCP:    仅 LLM 触发，必回注（JSON-RPC 2.0 标准）
+ *   MCP:    仅 LLM 触发，必回注（工具定义参考 MCP inputSchema 格式）
  */
 
 #include "assistant/core/assistant.h"
@@ -696,15 +696,11 @@ void Assistant::ProcessResult(const std::string& asr_text) {
 
     std::cout << kTag << " ASR: \"" << text << "\"" << std::endl;
 
-    /* ── 第1步：偏好修改检测 ── */
-    agent::PreferenceResult pref = agent_core_->DetectAndApplyPreference(text);
-    if (pref.modified) {
-        std::cout << kTag << " 偏好修改: " << pref.message << std::endl;
-        SafeTTS(pref.message);
-        return;
-    }
-
-    /* ── 第2步：Action 关键词匹配（最高优先级，直接执行，不回注）── */
+    /* ── 第1步：Action 关键词匹配（最高优先级，直接执行，不回注 LLM）──
+     * 偏好修改也是 action 的一种，但它的"关键词触发"需要从原句里提取
+     * key/value（handler 只收到 action 名、拿不到原文），所以在命中后
+     * 由这里补一次提取，再落盘。LLM 触发路径则直接带 key/value 参数
+     * （ExecuteSingleTool），两条路径最终都走 AgentCore 的增删接口。 */
     agent::ActionResult action = action_mgr_->Match(text);
     if (action.handled) {
         std::cout << kTag << " 匹配 action: " << action.action << std::endl;
@@ -713,6 +709,18 @@ void Assistant::ProcessResult(const std::string& asr_text) {
         if (action.action == "action.sleep") {
             sleep_requested_ = true;
             SafeTTS("好的，小九去休息了");
+            return;
+        }
+
+        /* 偏好类 action：关键词触发 → 从原句提取参数并落盘 */
+        if (action.action == "action.set_preference" ||
+            action.action == "action.delete_preference") {
+            agent::PreferenceResult pref = agent_core_->DetectAndApplyPreference(text);
+            std::cout << kTag << " 偏好修改(关键词): " << pref.message << std::endl;
+            agent_core_->AddTurn("user", text);
+            agent_core_->AddTurn("assistant", pref.message);
+            SafeTTS(pref.modified ? pref.message
+                                  : "请说完整一些，例如：记住我喜欢喝美式");
             return;
         }
 

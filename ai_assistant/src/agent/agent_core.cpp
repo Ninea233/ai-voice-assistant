@@ -159,7 +159,7 @@ size_t AgentCore::HistorySize() const {
     return history_.size();
 }
 
-/* ========== 可改动区语音修改 ========== */
+/* ========== 可改动区语音修改（供 action.set_preference / action.delete_preference 的关键词路径提取参数）========== */
 
 PreferenceResult AgentCore::DetectAndApplyPreference(const std::string& text) {
     PreferenceResult result;
